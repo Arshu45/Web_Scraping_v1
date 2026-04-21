@@ -1,0 +1,23 @@
+# Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Scrapy
+.scrapy/
+
+# Output Data
+data/*.json
+data/*.csv
+data/*.xml
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp

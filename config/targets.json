@@ -1,0 +1,36 @@
+{
+  "sources": [
+    {
+      "name": "coupondunia",
+      "enabled": true,
+      "brands": [
+        {
+          "name": "Myntra",
+          "url": "https://www.coupondunia.in/myntra",
+          "enabled": true
+        },
+        {
+          "name": "Ajio",
+          "url": "https://www.coupondunia.in/ajio",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "grabon",
+      "enabled": true,
+      "brands": [
+        {
+          "name": "Myntra",
+          "url": "https://www.grabon.in/myntra-coupons/",
+          "enabled": true
+        },
+        {
+          "name": "Ajio",
+          "url": "https://www.grabon.in/ajio-coupons/",
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}
