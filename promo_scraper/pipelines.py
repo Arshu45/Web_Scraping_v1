@@ -1,37 +1,91 @@
+import hashlib
+import sys
 import os
-from scrapy.exporters import JsonItemExporter
+from datetime import datetime
 
-class BrandJSONPipeline:
-    def __init__(self):
-        self.files = {}
-        self.exporters = {}
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from database.connection import get_session
+from database.models import Competitor, Promotion
+
+
+def make_offer_hash(source: str, brand: str, title: str) -> str:
+    """Generate a stable SHA-256 fingerprint for deduplication."""
+    raw = f"{source}|{brand}|{title}".lower().strip()
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
+
+class PostgresPipeline:
+    """
+    Receives OfferItems from any spider and
+    upserts them into the PostgreSQL `promotions` table using offer_hash
+    for deduplication. Tracks insert/update counts for the audit log.
+    """
 
     def open_spider(self, spider):
-        os.makedirs('data', exist_ok=True)
+        self.session = get_session()
+        self.items_scraped = 0
+        self.items_inserted = 0
+        self.items_updated = 0
+        spider.logger.info("PostgresPipeline: DB session opened.")
 
     def process_item(self, item, spider):
-        brand = item.get('brand', 'unknown').lower()
-        source = item.get('source', 'unknown').lower()
-        
-        file_key = f"{source}_{brand}"
-        
-        if file_key not in self.files:
-            file_path = os.path.join('data', f"{file_key}_offers.json")
-            self.files[file_key] = open(file_path, 'wb')
-            exporter = JsonItemExporter(
-                self.files[file_key], 
-                encoding='utf-8', 
-                ensure_ascii=False, 
-                indent=4
+        self.items_scraped += 1
+
+        brand_name  = item.get('brand', 'unknown')
+        source_name = item.get('source', 'unknown')
+        title       = item.get('title', '')
+
+        # 1. Look up competitor_id from DB
+        competitor = self.session.query(Competitor).filter_by(name=brand_name).first()
+        if not competitor:
+            spider.logger.warning(f"Competitor '{brand_name}' not found in DB. Skipping item.")
+            return item
+
+        # 2. Generate deduplication hash
+        offer_hash = make_offer_hash(source_name, brand_name, title)
+
+        # 3. Upsert: check if offer already exists
+        existing = self.session.query(Promotion).filter_by(offer_hash=offer_hash).first()
+
+        if existing:
+            # Update only the scraped_at timestamp — don't duplicate
+            existing.scraped_at = datetime.utcnow()
+            self.items_updated += 1
+        else:
+            # Insert new promotion
+            promotion = Promotion(
+                competitor_id = competitor.id,
+                offer_title   = title,
+                raw_text      = item.get('raw_text'),
+                source_name   = source_name,
+                source_url    = item.get('source_url'),
+                offer_hash    = offer_hash,
+                scraped_at    = datetime.utcnow(),
+                created_at    = datetime.utcnow(),
             )
-            exporter.start_exporting()
-            self.exporters[file_key] = exporter
-            
-        self.exporters[file_key].export_item(item)
+            self.session.add(promotion)
+            self.items_inserted += 1
+
+        try:
+            self.session.commit()
+        except Exception as e:
+            self.session.rollback()
+            spider.logger.error(f"DB commit failed for item '{title[:50]}': {e}")
+
         return item
 
     def close_spider(self, spider):
-        for exporter in self.exporters.values():
-            exporter.finish_exporting()
-        for f in self.files.values():
-            f.close()
+        self.session.close()
+        spider.logger.info(
+            f"PostgresPipeline closed. "
+            f"Scraped={self.items_scraped}, "
+            f"Inserted={self.items_inserted}, "
+            f"Updated={self.items_updated}"
+        )
+        # Make stats accessible to Prefect flow via spider object
+        spider.pipeline_stats = {
+            'items_scraped':  self.items_scraped,
+            'items_inserted': self.items_inserted,
+            'items_updated':  self.items_updated,
+        }

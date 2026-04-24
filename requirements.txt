@@ -1,0 +1,17 @@
+# ── Core Scraping ──────────────────────────────────
+scrapy
+
+# ── Database ───────────────────────────────────────
+sqlalchemy
+psycopg2-binary          # PostgreSQL driver
+alembic                  # DB schema migrations
+
+# ── NLP Enrichment ─────────────────────────────────────
+gliner                   # Zero-shot Named Entity Recognition (local)
+groq                     # Groq LLM API client (cloud, fast inference)
+
+# ── Orchestration ──────────────────────────────────
+prefect                  # Pipeline scheduling & monitoring
+
+# ── Utilities ──────────────────────────────────────
+python-dotenv            # Load .env for DB credentials
