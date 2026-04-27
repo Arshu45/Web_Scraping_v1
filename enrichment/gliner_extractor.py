@@ -111,49 +111,63 @@ def enrich_promotions(batch_size: int = 50) -> dict:
     errors = 0
 
     try:
-        # Find promotions that haven't been enriched yet
-        unenriched = (
-            session.query(Promotion)
-            .filter(
+        seen_ids = set()
+        while True:
+            # Find promotions that haven't been enriched yet (and we haven't seen this run)
+            query = session.query(Promotion).filter(
                 Promotion.raw_text.isnot(None),
                 Promotion.promo_type.is_(None),
                 Promotion.discount_max.is_(None),
                 Promotion.flat_value.is_(None),
             )
-            .limit(batch_size)
-            .all()
-        )
+            
+            if seen_ids:
+                query = query.filter(~Promotion.id.in_(seen_ids))
+                
+            unenriched = query.limit(batch_size).all()
 
-        print(f"Found {len(unenriched)} unenriched promotions to process.")
+            if not unenriched:
+                break
+            
+            if enriched == 0 and errors == 0:
+                print(f"Found unenriched promotions. Starting batches of {batch_size}...")
 
-        for promo in unenriched:
-            try:
-                entities = model.predict_entities(promo.raw_text, ENTITY_LABELS)
-                structured = parse_entities(entities)
+            batch_errors = 0
+            for promo in unenriched:
+                seen_ids.add(promo.id)
+                try:
+                    entities = model.predict_entities(promo.raw_text, ENTITY_LABELS)
+                    structured = parse_entities(entities)
 
-                coupon_code = structured['coupon_code']
-                if coupon_code and isinstance(coupon_code, str):
-                    coupon_code = coupon_code[:50]
+                    coupon_code = structured['coupon_code']
+                    if coupon_code and isinstance(coupon_code, str):
+                        coupon_code = coupon_code[:50]
 
-                promo_type = structured['promo_type']
-                if promo_type and isinstance(promo_type, str):
-                    promo_type = promo_type[:30]
+                    promo_type = structured['promo_type']
+                    if promo_type and isinstance(promo_type, str):
+                        promo_type = promo_type[:30]
 
-                promo.discount_min = structured['discount_min']
-                promo.discount_max = structured['discount_max']
-                promo.flat_value   = structured['flat_value']
-                promo.min_purchase = structured['min_purchase']
-                promo.coupon_code  = coupon_code
-                promo.user_type    = structured['user_type']
-                promo.promo_type   = promo_type
+                    promo.discount_min = structured['discount_min']
+                    promo.discount_max = structured['discount_max']
+                    promo.flat_value   = structured['flat_value']
+                    promo.min_purchase = structured['min_purchase']
+                    promo.coupon_code  = coupon_code
+                    promo.user_type    = structured['user_type']
+                    promo.promo_type   = promo_type
 
-                session.commit()
-                enriched += 1
+                    session.commit()
+                    enriched += 1
 
-            except Exception as e:
-                session.rollback()
-                print(f"Error enriching promotion {promo.id}: {e}")
-                errors += 1
+                except Exception as e:
+                    session.rollback()
+                    print(f"Error enriching promotion {promo.id}: {e}")
+                    errors += 1
+                    batch_errors += 1
+            
+            # Prevent infinite loop if a batch fails completely
+            if batch_errors == len(unenriched):
+                print("Halting enrichment: entire batch failed.")
+                break
 
     finally:
         session.close()

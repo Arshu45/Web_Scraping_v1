@@ -99,6 +99,18 @@ def run_spider_subprocess(spider_name: str) -> dict:
     finished_at = datetime.now(timezone.utc)
     success = result.returncode == 0
 
+    import re
+    scraped = 0
+    inserted = 0
+    updated = 0
+    
+    # Parse stats from PostgresPipeline output in stderr
+    stats_match = re.search(r"PostgresPipeline closed\. Scraped=(\d+), Inserted=(\d+), Updated=(\d+)", result.stderr)
+    if stats_match:
+        scraped = int(stats_match.group(1))
+        inserted = int(stats_match.group(2))
+        updated = int(stats_match.group(3))
+
     # Update the DB run record
     session = get_session()
     try:
@@ -106,6 +118,9 @@ def run_spider_subprocess(spider_name: str) -> dict:
         if run:
             run.finished_at = finished_at
             run.status      = 'success' if success else 'failed'
+            run.items_scraped = scraped
+            run.items_inserted = inserted
+            run.items_updated = updated
             session.commit()
     finally:
         session.close()
@@ -123,6 +138,9 @@ def run_spider_subprocess(spider_name: str) -> dict:
         'run_id': run_id,
         'success': success,
         'returncode': result.returncode,
+        'items_scraped': scraped,
+        'items_inserted': inserted,
+        'items_updated': updated,
         'started_at': started_at.isoformat(),
         'finished_at': finished_at.isoformat(),
     }
@@ -131,10 +149,10 @@ def run_spider_subprocess(spider_name: str) -> dict:
 # ─────────────────────────────────────────────
 # Task 3: GLiNER / enrichment pass
 # ─────────────────────────────────────────────
-@task(name="Enrich All Data with GLiNER")
+@task(name="Enrich Data")
 def enrich_all(batch_size: int = 200) -> dict:
     logger = get_run_logger()
-    logger.info("Starting GLiNER enrichment pass on all new promotions...")
+    logger.info("Starting enrichment pass on all new promotions...")
     summary = enrich_promotions(batch_size=batch_size)
     logger.info(f"Enrichment complete: {summary}")
     return summary
@@ -168,7 +186,9 @@ def generate_report(spider_results: list[dict], enrichment_summary: dict):
         icon   = "✅" if r.get('success') else "❌"
         name   = r.get('spider', 'unknown')
         run_id = r.get('run_id', '?')
-        report_lines.append(f"║  {icon} {name:<20} (run #{run_id}){' ' * (8 - len(str(run_id)))}║")
+        scraped = r.get('items_scraped', 0)
+        inserted = r.get('items_inserted', 0)
+        report_lines.append(f"║  {icon} {name:<14} (run #{run_id:<3}) | Scraped: {scraped:<4} | Inserted: {inserted:<4} ║")
 
     if failed:
         report_lines.append("╠══════════════════════════════════════════════╣")
@@ -193,7 +213,7 @@ def generate_report(spider_results: list[dict], enrichment_summary: dict):
 # THE MASTER FLOW
 # ─────────────────────────────────────────────
 @flow(name="Master Promo Scraper Pipeline", log_prints=True)
-def master_pipeline(enrich_batch_size: int = 200):
+def master_pipeline(enrich_batch_size: int = 50):
     """
     Discovers all enabled spiders from the DB and runs them ALL
     in parallel subprocesses. After all complete, runs GLiNER
