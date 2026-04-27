@@ -6,6 +6,10 @@ Run this ONCE after setting up the database:
 
 This populates the `competitors` and `scraping_sources` tables
 from the existing targets.json, making the DB the new source of truth.
+
+Note: Categories are no longer stored in a separate table.
+      They are configured in enrichment/gliner_extractor.py → PROMOTION_CATEGORIES
+      and written directly to the promotions.category column during enrichment.
 """
 
 import json
@@ -16,24 +20,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import get_session, init_db
-from database.models import Competitor, ScrapingSource, Category
-
-# Master category seed data
-MASTER_CATEGORIES = [
-    "Apparel", "Footwear", "Beauty & Personal Care",
-    "Accessories", "Jewellery", "Home & Decor",
-    "Kids", "Sports & Fitness", "Electronics",
-]
-
-
-def seed_categories(session):
-    print("→ Seeding master categories...")
-    for cat_name in MASTER_CATEGORIES:
-        exists = session.query(Category).filter_by(name=cat_name).first()
-        if not exists:
-            session.add(Category(name=cat_name))
-    session.commit()
-    print(f"  ✓ {len(MASTER_CATEGORIES)} categories seeded.")
+from database.models import Competitor, ScrapingSource
 
 
 def seed_from_targets(session):
@@ -56,14 +43,13 @@ def seed_from_targets(session):
             if not competitor:
                 competitor = Competitor(
                     name=brand_name,
-                    category="Fashion",
                     enabled=True,
                 )
                 session.add(competitor)
                 session.flush()  # Get the ID before adding sources
                 inserted_competitors += 1
                 print(f"  ✓ Added competitor: {brand_name}")
-            
+
             # Upsert scraping source
             src = session.query(ScrapingSource).filter_by(source_url=brand['url']).first()
             if not src:
@@ -88,9 +74,16 @@ if __name__ == "__main__":
 
     session = get_session()
     try:
-        seed_categories(session)
         print("\n→ Seeding competitors and scraping sources from targets.json...")
         seed_from_targets(session)
+
+        # Print configured categories
+        from enrichment.gliner_extractor import PROMOTION_CATEGORIES
+        print(f"\n📋 Active promotion categories ({len(PROMOTION_CATEGORIES)}):")
+        for c in PROMOTION_CATEGORIES:
+            print(f"   - {c}")
+        print("\n   (Edit enrichment/gliner_extractor.py → PROMOTION_CATEGORIES to change these)")
+
     except Exception as e:
         session.rollback()
         print(f"❌ Error: {e}")

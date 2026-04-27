@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import get_session
-from database.models import Promotion, ScrapingRun, ScrapingSource, Competitor, Category
+from database.models import Promotion, ScrapingRun, ScrapingSource, Competitor
 
 
 def reset_all_tables(session):
@@ -22,11 +22,10 @@ def reset_all_tables(session):
 
     # Order matters — delete child tables before parents (foreign key constraints)
     counts = {
-        'promotions':      session.query(Promotion).delete(),
-        'scraping_runs':   session.query(ScrapingRun).delete(),
-        'scraping_sources':session.query(ScrapingSource).delete(),
-        'competitors':     session.query(Competitor).delete(),
-        'categories':      session.query(Category).delete(),
+        'promotions':       session.query(Promotion).delete(),
+        'scraping_runs':    session.query(ScrapingRun).delete(),
+        'scraping_sources': session.query(ScrapingSource).delete(),
+        'competitors':      session.query(Competitor).delete(),
     }
     session.commit()
 
@@ -37,7 +36,7 @@ def reset_all_tables(session):
 if __name__ == "__main__":
     confirm = input(
         "\n⚠️  This will DELETE ALL rows from promotions, competitors, "
-        "scraping_sources, categories, and scraping_runs.\n"
+        "scraping_sources, and scraping_runs.\n"
         "   Type 'yes' to continue: "
     ).strip().lower()
 
@@ -50,8 +49,8 @@ if __name__ == "__main__":
         reset_all_tables(session)
         print("\n✅ All tables cleared.")
         print("\n👉 Next steps:")
-        print("   1. python scripts/seed_db.py     ← re-seed targets & categories")
-        print("   2. python flows/master_pipeline.py ← run all spiders")
+        print("   1. python scripts/seed_db.py       ← re-seed targets")
+        print("   2. python flows/master_pipeline.py  ← run all spiders")
     except Exception as e:
         session.rollback()
         print(f"❌ Error: {e}")

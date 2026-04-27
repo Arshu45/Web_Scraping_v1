@@ -21,6 +21,7 @@ from groq import Groq
 
 from database.connection import get_session
 from database.models import Promotion
+from enrichment.gliner_extractor import PROMOTION_CATEGORIES
 
 load_dotenv()
 
@@ -28,7 +29,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 # System prompt — instructs the LLM to return strict JSON array
-SYSTEM_PROMPT = """You are a retail promotion data extraction assistant.
+_SYSTEM_PROMPT_BASE = """You are a retail promotion data extraction assistant.
 I will provide a list of promotions, each with an 'id' and 'text'.
 Extract structured information for EACH promotion and return ONLY a valid JSON ARRAY of objects.
 If a field is not found in the text, use null.
@@ -44,9 +45,15 @@ Return this EXACT JSON array structure with no extra text:
     "coupon_code": <string or null>,
     "user_type": <"new" | "existing" | "all">,
     "promo_type": <"Percentage Off" | "Flat Discount" | "Cashback" | "Free Shipping" | "BOGO" | null>,
-    "valid_until": <"YYYY-MM-DD" or null>
+    "valid_until": <"YYYY-MM-DD" or null>,
+    "category": <one of the allowed categories or null>
   }
 ]
+
+Allowed categories (use EXACTLY one of these strings or null):
+"""
+
+SYSTEM_PROMPT = _SYSTEM_PROMPT_BASE + "\n".join(f"- {c}" for c in PROMOTION_CATEGORIES) + """
 
 Rules:
 - discount_min and discount_max: extract percentage numbers (e.g. "40-70% off" → min=40, max=70)
@@ -54,6 +61,7 @@ Rules:
 - min_purchase: extract minimum order value (e.g. "on orders above ₹1499" → 1499.0)
 - coupon_code: extract any uppercase promo/coupon code mentioned (e.g. "SAVE20")
 - user_type: "new" if offer is for new users, "existing" if for existing users, "all" otherwise
+- category: classify the promotion into one of the allowed categories based on the products mentioned
 - Return ONLY raw JSON array — no markdown, no explanation, no code fences.
 """
 
@@ -161,6 +169,7 @@ def enrich_promotions(batch_size: int = 50) -> dict:
                         promo.coupon_code  = coupon_code
                         promo.user_type    = structured.get('user_type', 'all')
                         promo.promo_type   = promo_type
+                        promo.category     = structured.get('category')
 
                         enriched += 1
 
