@@ -2,40 +2,52 @@
 
 A scalable, multi-source promotional offer intelligence pipeline built with **Scrapy**, **PostgreSQL**, **GLiNER**, and **Prefect**.
 
-The system scrapes promotional offers and discounts from aggregator sites (CouponDunia, GrabOn), stores them in a structured PostgreSQL database, and automatically extracts key details like discount percentages, coupon codes, and minimum purchase amounts using AI-powered Named Entity Recognition (GLiNER).
+The system operates in two main modes:
+1. **Aggregator Scraping**: Scrapes promotional offers from aggregator sites (CouponDunia, GrabOn), stores them, and extracts key details (discount percentages, coupon codes, min purchase amounts) using AI-powered Named Entity Recognition (GLiNER).
+2. **Direct Catalog Crawling**: Self-discovers and scrapes product catalogs directly from retail sites (like Forever New), extracting structured, SKU-level pricing data (MRP vs. Sale price, discounts) without needing NLP enrichment.
 
 ---
 
 ## Architecture
 
 ```
-config/targets.json (seed only)
-        ↓
-  PostgreSQL DB  ←──────────────────────────────────────┐
-  (scraping_sources table)                              │
-        ↓                                               │
-  Scrapy Spider (BasePromoSpider)                       │
-  reads targets from DB, not hardcoded URLs             │
-        ↓                                               │
-  PostgresPipeline                                      │
-  upserts OfferItems with SHA-256 deduplication ────────┘
-        ↓
-  GLiNER Enrichment
-  extracts: discount %, flat value, coupon code, min purchase
-        ↓
-  Prefect Flow Orchestration
-  schedules, retries, and logs every run
+                    config/targets.json (seed only)
+                                ↓
+                          PostgreSQL DB
+                 (competitors & scraping_sources)
+                                │
+          ┌─────────────────────┴─────────────────────┐
+          ▼                                           ▼
+Aggregator Spiders (BasePromoSpider)       Direct Catalog Crawlers
+(e.g., coupondunia, grabon)                (e.g., forevernew_products)
+Reads URLs from DB                         Self-discovering from site nav
+          │                                           │
+          ▼                                           ▼
+   PostgresPipeline                        ProductSnapshotPipeline
+   upserts OfferItems                      upserts ProductSnapshotItems
+   (SHA-256 dedup)                         (URL dedup)
+          │                                           │
+          ▼                                           │
+  GLiNER Enrichment                                   │
+  (Extracts discounts, codes)                         │
+          │                                           │
+          └─────────────────────┬─────────────────────┘
+                                ▼
+                   Prefect Flow Orchestration
+           (master_pipeline.py runs all in parallel)
 ```
 
-### Database Schema (5 Tables)
+### Database Schema (4 Tables)
 
 | Table | Purpose |
 |---|---|
-| `competitors` | Brands being tracked (Myntra, Ajio, etc.) |
-| `scraping_sources` | Aggregator URLs per brand — the dynamic config |
-| `categories` | Master category lookup (Apparel, Footwear, etc.) |
-| `promotions` | All scraped offers with structured fields |
+| `competitors` | Brands being tracked (Myntra, Ajio, Forever New, etc.) |
+| `scraping_sources` | Aggregator config / Entry points for crawlers |
+| `promotions` | All scraped aggregator offers with structured fields |
+| `product_snapshots`| SKU-level pricing data extracted from direct catalogs |
 | `scraping_runs` | Audit log for every Prefect pipeline run |
+
+*Note: Product categories are no longer stored in a database table. They are configured via `PROMOTION_CATEGORIES` in `enrichment/gliner_extractor.py` for dynamic mapping.*
 
 ---
 
@@ -43,7 +55,7 @@ config/targets.json (seed only)
 
 | Layer | Technology |
 |---|---|
-| Scraping | Scrapy |
+| Scraping / Crawling | Scrapy |
 | Database | PostgreSQL + SQLAlchemy |
 | Migrations | Alembic |
 | NLP Enrichment | GLiNER (zero-shot NER) |
@@ -67,7 +79,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **Note:** GLiNER will download a ~1.5GB model on first run. This is cached locally after the first download.
+> **Note:** GLiNER will download a ~1.5GB model on first run. This is cached locally.
 
 ### 3. Configure Environment
 ```bash
@@ -80,47 +92,33 @@ cp .env.example .env
 ```bash
 alembic upgrade head
 ```
-This creates all 5 tables in your PostgreSQL database.
+This creates all necessary tables in your PostgreSQL database.
 
 ### 5. Seed the Database
 ```bash
 python scripts/seed_db.py
 ```
-This migrates `config/targets.json` into the `competitors`, `scraping_sources`, and `categories` tables. Run this once on setup.
+This migrates `config/targets.json` into the `competitors` and `scraping_sources` tables. 
+
+> **Need a fresh start?** Run `python scripts/reset_db.py` to wipe all data (but keep the schema), then run `seed_db.py` again.
 
 ---
 
 ## Running the Pipeline
 
-### Option A — Full Prefect Pipeline (Recommended)
-Runs the spider, stores results in PostgreSQL, then enriches with GLiNER:
+### Option A — Full Master Pipeline (Recommended)
+Runs all enabled spiders (aggregators + catalogs) in parallel, stores results, and enriches aggregator data with GLiNER:
 ```bash
-python flows/scraping_pipeline.py coupondunia
-python flows/scraping_pipeline.py grabon
+python flows/master_pipeline.py
 ```
 
-### Option B — Spider Only (Scrapy CLI)
-Runs just the scraping step, skipping GLiNER enrichment:
+### Option B — Run Individual Spiders (Scrapy CLI)
+Runs just the scraping step, skipping Prefect orchestration and GLiNER enrichment:
 ```bash
 scrapy crawl coupondunia
 scrapy crawl grabon
+scrapy crawl forevernew_products
 ```
-
-### Option C — GLiNER Enrichment Only
-Enriches any previously scraped but unenriched promotions:
-```bash
-python enrichment/gliner_extractor.py
-```
-
----
-
-## Adding a New Spider
-
-1. Add the new source to `config/targets.json` and re-run `scripts/seed_db.py`, **or** insert directly into the `scraping_sources` table.
-2. Create a new spider file in `promo_scraper/spiders/` that inherits from `BasePromoSpider`.
-3. Set `name = "your_spider_name"` and implement the `parse()` method.
-
-The central `PostgresPipeline` and Prefect flow will handle the rest automatically.
 
 ---
 
@@ -131,22 +129,24 @@ The central `PostgresPipeline` and Prefect flow will handle the rest automatical
 ├── config/
 │   └── targets.json       # Initial seed config (now managed via DB)
 ├── database/
-│   ├── models.py          # SQLAlchemy ORM models (5 tables)
+│   ├── models.py          # SQLAlchemy ORM models
 │   └── connection.py      # PostgreSQL engine & session factory
 ├── enrichment/
 │   └── gliner_extractor.py  # GLiNER NER enrichment module
 ├── flows/
-│   └── scraping_pipeline.py # Prefect 4-task orchestration flow
+│   └── master_pipeline.py # Prefect master orchestration flow
 ├── promo_scraper/
-│   ├── items.py           # OfferItem schema
-│   ├── pipelines.py       # PostgresPipeline (upsert with deduplication)
+│   ├── items.py           # OfferItem & ProductSnapshotItem schemas
+│   ├── pipelines.py       # PostgresPipeline & ProductSnapshotPipeline
 │   ├── settings.py        # Scrapy settings
 │   └── spiders/
 │       ├── base.py        # BasePromoSpider (reads targets from DB)
 │       ├── coupondunia.py
-│       └── grabon.py
+│       ├── grabon.py
+│       └── forevernew_products.py # Direct catalog crawler
 ├── scripts/
-│   └── seed_db.py         # One-time DB seeding script
+│   ├── seed_db.py         # DB seeding script
+│   └── reset_db.py        # DB wipe script
 ├── .env.example           # Template for credentials
 └── requirements.txt
 ```
