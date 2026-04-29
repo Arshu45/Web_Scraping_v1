@@ -103,13 +103,24 @@ def run_spider_subprocess(spider_name: str) -> dict:
     scraped = 0
     inserted = 0
     updated = 0
-    
-    # Parse stats from PostgresPipeline output in stderr
+
+    # Try PostgresPipeline stats first (aggregator spiders)
     stats_match = re.search(r"PostgresPipeline closed\. Scraped=(\d+), Inserted=(\d+), Updated=(\d+)", result.stderr)
     if stats_match:
-        scraped = int(stats_match.group(1))
+        scraped  = int(stats_match.group(1))
         inserted = int(stats_match.group(2))
-        updated = int(stats_match.group(3))
+        updated  = int(stats_match.group(3))
+
+    # For direct-catalog spiders (forevernew_products), use ProductSnapshotPipeline stats
+    snap_match = re.search(r"ProductSnapshotPipeline closed\. Inserted=(\d+), Updated=(\d+)", result.stderr)
+    if snap_match:
+        snap_ins = int(snap_match.group(1))
+        snap_upd = int(snap_match.group(2))
+        # Use snapshot stats if they have actual data (postgres stats will show 0 for these)
+        if snap_ins + snap_upd > 0:
+            inserted = snap_ins
+            updated  = snap_upd
+            scraped  = snap_ins + snap_upd
 
     # Update the DB run record
     session = get_session()
@@ -145,9 +156,8 @@ def run_spider_subprocess(spider_name: str) -> dict:
         'finished_at': finished_at.isoformat(),
     }
 
-
 # ─────────────────────────────────────────────
-# Task 3: GLiNER / enrichment pass
+# Task 4: GLiNER / enrichment pass
 # ─────────────────────────────────────────────
 @task(name="Enrich Data")
 def enrich_all(batch_size: int = 200) -> dict:
@@ -159,7 +169,7 @@ def enrich_all(batch_size: int = 200) -> dict:
 
 
 # ─────────────────────────────────────────────
-# Task 4: Print the final checklist / report
+# Task: Print the final checklist / report
 # ─────────────────────────────────────────────
 @task(name="Generate Summary Report")
 def generate_report(spider_results: list[dict], enrichment_summary: dict):
@@ -167,6 +177,11 @@ def generate_report(spider_results: list[dict], enrichment_summary: dict):
 
     passed = [r for r in spider_results if r.get('success')]
     failed = [r for r in spider_results if not r.get('success')]
+
+    # Separate out the forevernew snapshot stats for the summary header
+    fn_result = next((r for r in spider_results if r.get('spider') == 'forevernew_products'), {})
+    fn_ins = fn_result.get('items_inserted', 0)
+    fn_upd = fn_result.get('items_updated', 0)
 
     report_lines = [
         "",
@@ -177,16 +192,18 @@ def generate_report(spider_results: list[dict], enrichment_summary: dict):
         f"║  ✅ Passed       : {len(passed):<27}║",
         f"║  ❌ Failed       : {len(failed):<27}║",
         f"║  💡 Enriched    : {enrichment_summary.get('enriched', 0):<27}║",
+        f"║  📸 Products (new): {fn_ins:<25}║",
+        f"║  🔄 Products (upd): {fn_upd:<25}║",
         "╠══════════════════════════════════════════════╣",
         "║  SPIDER CHECKLIST                            ║",
         "╠══════════════════════════════════════════════╣",
     ]
 
     for r in spider_results:
-        icon   = "✅" if r.get('success') else "❌"
-        name   = r.get('spider', 'unknown')
-        run_id = r.get('run_id', '?')
-        scraped = r.get('items_scraped', 0)
+        icon    = "✅" if r.get('success') else "❌"
+        name    = r.get('spider', 'unknown')
+        run_id  = str(r.get('run_id', '-'))
+        scraped  = r.get('items_scraped', 0)
         inserted = r.get('items_inserted', 0)
         report_lines.append(f"║  {icon} {name:<14} (run #{run_id:<3}) | Scraped: {scraped:<4} | Inserted: {inserted:<4} ║")
 
@@ -215,28 +232,28 @@ def generate_report(spider_results: list[dict], enrichment_summary: dict):
 @flow(name="Master Promo Scraper Pipeline", log_prints=True)
 def master_pipeline(enrich_batch_size: int = 50):
     """
-    Discovers all enabled spiders from the DB and runs them ALL
-    in parallel subprocesses. After all complete, runs GLiNER
-    enrichment and prints a full checklist report.
+    1. Discovers ALL enabled spiders from the DB (including forevernew_products) and runs them in parallel.
+    2. Runs GLiNER enrichment on new aggregator promotions.
+    3. Prints a full checklist summary report.
     """
     logger = get_run_logger()
     logger.info("🚀 Master pipeline starting...")
 
-    # Step 1: Discover all active spiders from DB
+    # Step 1: Discover all active spiders from DB (grabon, coupondunia, forevernew_products, ...)
     spider_names = get_active_spiders()
 
     if not spider_names:
-        logger.warning("No active spiders found. Exiting.")
-        return
+        logger.warning("No active spiders found in DB.")
 
-    # Step 2: Run all spiders in parallel using Prefect's .map()
-    # Each spider gets its own subprocess — no reactor conflicts
-    spider_results = run_spider_subprocess.map(spider_names)
+    # Step 2: Run ALL spiders in parallel (aggregator + catalog crawlers)
+    spider_futures = run_spider_subprocess.map(spider_names) if spider_names else []
 
-    # Step 3: GLiNER enrichment after all spiders are done
-    enrichment_summary = enrich_all(enrich_batch_size, wait_for=spider_results)
+    # Step 3: Wait for aggregator spiders, then run enrichment
+    # Note: forevernew_products writes directly to product_snapshots — no enrichment needed
+    enrichment_summary = enrich_all(enrich_batch_size, wait_for=spider_futures)
 
-    # Step 4: Print checklist report
+    # Step 4: Collect results and print report
+    spider_results = [f.result() for f in spider_futures]
     generate_report(spider_results, enrichment_summary)
 
 

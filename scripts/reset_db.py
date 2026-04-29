@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import get_session
-from database.models import Promotion, ScrapingRun, ScrapingSource, Competitor
+from database.models import Promotion, ScrapingRun, ScrapingSource, Competitor, ProductSnapshot
 
 
 def reset_all_tables(session):
@@ -22,10 +22,11 @@ def reset_all_tables(session):
 
     # Order matters — delete child tables before parents (foreign key constraints)
     counts = {
-        'promotions':       session.query(Promotion).delete(),
-        'scraping_runs':    session.query(ScrapingRun).delete(),
-        'scraping_sources': session.query(ScrapingSource).delete(),
-        'competitors':      session.query(Competitor).delete(),
+        'promotions':        session.query(Promotion).delete(),
+        'product_snapshots': session.query(ProductSnapshot).delete(),
+        'scraping_runs':     session.query(ScrapingRun).delete(),
+        'scraping_sources':  session.query(ScrapingSource).delete(),
+        'competitors':       session.query(Competitor).delete(),
     }
     session.commit()
 

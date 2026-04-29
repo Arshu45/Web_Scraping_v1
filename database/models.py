@@ -114,3 +114,45 @@ class ScrapingRun(Base):
 
     def __repr__(self):
         return f"<ScrapingRun(id={self.id}, spider='{self.spider_name}', status='{self.status}')>"
+
+
+class ProductSnapshot(Base):
+    """
+    Stores individual product-level promotional data scraped directly from
+    a brand's own website (e.g., forevernew.co.in/sale/).
+
+    Unlike the `promotions` table (which stores text-based coupon offers),
+    this table tracks exact per-product pricing with mathematically precise
+    discount values — no NLP enrichment needed.
+
+    Deduplication is by `product_url` (unique). On re-scrape, the row is
+    updated in-place (Option B: latest-state upsert). `first_seen_at` is
+    preserved; `last_seen_at` is updated on every run.
+    """
+    __tablename__ = 'product_snapshots'
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    competitor_id       = Column(Integer, ForeignKey('competitors.id', ondelete='CASCADE'), nullable=False)
+
+    # Product identity
+    product_name        = Column(String(255), nullable=False)
+    product_url         = Column(Text, unique=True, nullable=False)  # Deduplication key
+
+    # Category (auto-derived from the crawled URL path, no manual config)
+    category_path       = Column(String(255))   # e.g., "sale/clothing/jackets-blazers"
+    category_label      = Column(String(100))   # e.g., "Jackets Blazers"
+
+    # Exact pricing — direct from HTML, always accurate
+    original_price      = Column(Float)
+    sale_price          = Column(Float)
+    discount_percentage = Column(Float)         # e.g., 30.0 (from "30% OFF" label)
+
+    # Temporal tracking
+    first_seen_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_seen_at        = Column(DateTime, nullable=False)
+
+    # Relationship
+    competitor          = relationship("Competitor")
+
+    def __repr__(self):
+        return f"<ProductSnapshot(id={self.id}, name='{self.product_name[:40]}', discount={self.discount_percentage}%)>"
