@@ -31,6 +31,17 @@
           "enabled": true
         }
       ]
+    },
+    {
+      "name": "forevernew_products",
+      "enabled": true,
+      "brands": [
+        {
+          "name": "Forever New",
+          "url": "https://www.forevernew.co.in",
+          "enabled": true
+        }
+      ]
     }
   ]
 }

@@ -21,3 +21,12 @@ data/*.xml
 .vscode/
 .idea/
 *.swp
+
+# Secrets - NEVER commit this
+.env
+
+# Database
+*.db
+
+# GLiNER model cache
+.gliner_cache/
