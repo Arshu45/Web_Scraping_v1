@@ -137,15 +137,19 @@ class ProductSnapshot(Base):
     # Product identity
     product_name        = Column(String(255), nullable=False)
     product_url         = Column(Text, unique=True, nullable=False)  # Deduplication key
+    sku                 = Column(String(50))        # e.g., "cp-30128201" extracted from URL
 
     # Category (auto-derived from the crawled URL path, no manual config)
     category_path       = Column(String(255))   # e.g., "sale/clothing/jackets-blazers"
     category_label      = Column(String(100))   # e.g., "Jackets Blazers"
 
     # Exact pricing — direct from HTML, always accurate
-    original_price      = Column(Float)
-    sale_price          = Column(Float)
-    discount_percentage = Column(Float)         # e.g., 30.0 (from "30% OFF" label)
+    original_price      = Column(Float)         # MRP / strikethrough price (NULL for full-price items)
+    sale_price          = Column(Float)         # Current selling price (always present)
+    discount_percentage = Column(Float)         # e.g., 30.0 — NULL for full-price items
+
+    # Sale status flag — True when original_price exists (item is discounted)
+    is_on_sale          = Column(Boolean, default=False, nullable=False)
 
     # Temporal tracking
     first_seen_at       = Column(DateTime, default=datetime.utcnow, nullable=False)

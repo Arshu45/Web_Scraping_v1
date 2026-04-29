@@ -139,6 +139,8 @@ class ProductSnapshotPipeline:
             existing.original_price      = item.get('original_price')
             existing.sale_price          = item.get('sale_price')
             existing.discount_percentage = item.get('discount_percentage')
+            existing.is_on_sale          = item.get('is_on_sale', False)
+            existing.sku                 = item.get('sku')
             existing.last_seen_at        = now
             self.updated += 1
         else:
@@ -146,11 +148,13 @@ class ProductSnapshotPipeline:
                 competitor_id       = competitor.id,
                 product_name        = item.get('product_name'),
                 product_url         = product_url,
+                sku                 = item.get('sku'),
                 category_path       = item.get('category_path'),
                 category_label      = item.get('category_label'),
                 original_price      = item.get('original_price'),
                 sale_price          = item.get('sale_price'),
                 discount_percentage = item.get('discount_percentage'),
+                is_on_sale          = item.get('is_on_sale', False),
                 first_seen_at       = now,
                 last_seen_at        = now,
             )

@@ -1,25 +1,38 @@
 """
-ForeverNewProductsSpider — Self-discovering product-level catalog crawler.
+ForeverNewProductsSpider — Full catalog crawler for forevernew.co.in
 
 Strategy:
-  1. Start at /sale.html to auto-discover all sale category URLs.
-  2. Filter out facet/filter URLs (size=, color=, etc.).
-  3. For each clean category URL, paginate and extract every product card.
-  4. Yield a ProductSnapshotItem per product — no NLP, pure HTML extraction.
+  1. Start at the homepage and discover all main nav category links.
+  2. For each category, follow subcategory links then paginate all product pages.
+  3. Extract EVERY product — both on-sale and full-price.
+  4. Set is_on_sale=True only when a strikethrough (old-price) is present.
+  5. Yield ProductSnapshotItem — no NLP needed, all data is in the HTML.
 """
 import re
-import scrapy
 from urllib.parse import urlparse, urljoin
+import scrapy
 from promo_scraper.items import ProductSnapshotItem
 
-# Patterns in URL query/path that indicate a facet/filter page, not a real category
+# Base URL and brand
+BASE_URL   = 'https://www.forevernew.co.in'
+BRAND_NAME = 'Forever New'
+
+# URL fragments that indicate filter/facet pages — skip these
 SKIP_PATTERNS = [
     'size=', 'primary_colors=', 'discount_new=', 'price_filter=',
     'shop_by_fit=', 'shop_by_pattern=', 'cate_occasion=',
+    'javascript', 'login', 'account', 'checkout', 'cart', 'wishlist',
+    'search', 'customer', 'contact', '#',
 ]
 
-BASE_URL = 'https://www.forevernew.co.in'
-BRAND_NAME = 'Forever New'
+# Top-level nav path segments we care about (clothing, bags, etc.)
+CATALOG_PATHS = [
+    '/clothing',
+    '/bags-accessories',
+    '/jewellery',
+    '/accessories',
+    '/sale',
+]
 
 
 def _parse_price(price_str: str) -> float | None:
@@ -41,87 +54,102 @@ def _parse_discount(discount_str: str) -> float | None:
     return float(nums[0]) if nums else None
 
 
+def _extract_sku(url: str) -> str | None:
+    """Extract SKU from product URL: '...cp-30128201.html' → 'cp-30128201'"""
+    match = re.search(r'(cp-\d+)', url)
+    return match.group(1) if match else None
+
+
 def _category_from_url(url: str) -> tuple[str, str]:
     """
-    Derive a category path and human-readable label from a URL.
-    e.g., 'https://www.forevernew.co.in/sale/clothing/jackets-blazers.html'
-          → ('sale/clothing/jackets-blazers', 'Jackets Blazers')
+    Derive category_path and human-readable label from a URL.
+    '/clothing/dresses.html' → ('clothing/dresses', 'Dresses')
     """
-    path = urlparse(url).path.strip('/')
-    path = path.replace('.html', '')
+    path = urlparse(url).path.strip('/').replace('.html', '')
     label = path.split('/')[-1].replace('-', ' ').title()
     return path, label
 
 
+def _is_catalog_url(url: str) -> bool:
+    """True if the URL is a real category page we should crawl."""
+    if any(pat in url for pat in SKIP_PATTERNS):
+        return False
+    if not url.endswith('.html'):
+        return False
+    path = urlparse(url).path
+    return any(path.startswith(cat) for cat in CATALOG_PATHS)
+
+
 class ForeverNewProductsSpider(scrapy.Spider):
-    name = 'forevernew'
+    name = 'forevernew_products'
     allowed_domains = ['forevernew.co.in']
-    start_urls = [f'{BASE_URL}/sale.html']
+    start_urls = [BASE_URL]
 
     def parse(self, response):
-        """Step 1: Discover all clean sale category URLs from /sale.html."""
+        """Step 1: Discover all category URLs from the homepage nav."""
         seen = set()
-        raw_links = response.css('a[href*="/sale/"]::attr(href)').getall()
+        all_links = response.css('a::attr(href)').getall()
 
-        for href in raw_links:
-            # Make absolute
-            url = urljoin(BASE_URL, href)
+        for href in all_links:
+            url = urljoin(BASE_URL, href).split('?')[0]  # Strip query params
 
-            # Skip if it's a facet/filter URL
-            if any(pat in url for pat in SKIP_PATTERNS):
+            if url in seen:
+                continue
+            if not _is_catalog_url(url):
                 continue
 
-            # Only proper category .html pages
-            if not url.endswith('.html'):
-                continue
-
-            # Skip the /sale.html index itself
-            if url.rstrip('/') == f'{BASE_URL}/sale.html'.rstrip('/'):
-                continue
-
-            if url not in seen:
-                seen.add(url)
-                cat_path, cat_label = _category_from_url(url)
-                self.logger.info(f'[Category discovered] {cat_label} → {url}')
-                yield response.follow(
-                    url,
-                    callback=self.parse_category,
-                    cb_kwargs={'cat_path': cat_path, 'cat_label': cat_label},
-                )
+            seen.add(url)
+            cat_path, cat_label = _category_from_url(url)
+            self.logger.info(f'[Category discovered] {cat_label} → {url}')
+            yield response.follow(
+                url,
+                callback=self.parse_category,
+                cb_kwargs={'cat_path': cat_path, 'cat_label': cat_label},
+            )
 
     def parse_category(self, response, cat_path, cat_label):
-        """Step 2: Extract every product card on this page."""
+        """Step 2: Extract all products on a category page + follow pagination."""
         cards = response.css('li.item.product.product-item')
-        self.logger.info(f'[{cat_label}] Page {response.url} → {len(cards)} products')
+        self.logger.info(f'[{cat_label}] {response.url} → {len(cards)} products')
 
         for card in cards:
             name = card.css('strong.product-item-name a::text').get('').strip()
             url  = card.css('a.product-item-link::attr(href)').get()
-            orig = _parse_price(card.css('span.old-price .price::text').get())
-            sale = _parse_price(card.css('span.special-price .price::text').get())
-            disc = _parse_discount(card.css('div.price-off::text').get())
 
-            # Skip cards with no pricing data
-            if not name or not url or not sale:
+            if not name or not url:
                 continue
 
-            # If there is no old-price label, the item is full-price — skip
-            if not orig:
-                continue
+            # Old/MRP price exists only on discounted products
+            orig_str = card.css('span.old-price .price::text').get()
+            # sale_price is the CSS key Magento uses for both discounted and regular prices
+            curr_str = (
+                card.css('span.special-price .price::text').get()
+                or card.css('.price-box .price::text').get()
+            )
+
+            current_price = _parse_price(curr_str)
+            if not current_price:
+                continue  # No price at all — skip
+
+            original_price      = _parse_price(orig_str)
+            is_on_sale          = original_price is not None
+            discount_percentage = _parse_discount(card.css('div.price-off::text').get()) if is_on_sale else None
 
             item = ProductSnapshotItem()
             item['competitor_name']     = BRAND_NAME
             item['product_name']        = name
             item['product_url']         = url
+            item['sku']                 = _extract_sku(url)
             item['category_path']       = cat_path
             item['category_label']      = cat_label
-            item['original_price']      = orig
-            item['sale_price']          = sale
-            item['discount_percentage'] = disc
+            item['original_price']      = original_price     # MRP — None for full-price items
+            item['sale_price']          = current_price      # What you actually pay
+            item['discount_percentage'] = discount_percentage
+            item['is_on_sale']          = is_on_sale
 
             yield item
 
-        # Step 3: Pagination — follow the "Next" button if it exists
+        # Step 3: Pagination
         next_page = response.css('a.action.next::attr(href)').get()
         if next_page:
             yield response.follow(

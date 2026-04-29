@@ -41,6 +41,10 @@ class ProductSnapshotItem(scrapy.Item):
     category_label      = scrapy.Field()   # e.g., "Jackets Blazers"
 
     # Exact pricing
-    original_price      = scrapy.Field()   # e.g., 9800.0
-    sale_price          = scrapy.Field()   # e.g., 6860.0
-    discount_percentage = scrapy.Field()   # e.g., 30.0
+    original_price      = scrapy.Field()   # MRP — NULL for full-price items
+    sale_price          = scrapy.Field()   # Current selling price (always present)
+    discount_percentage = scrapy.Field()   # e.g., 30.0 — NULL for full-price items
+
+    # Status
+    is_on_sale          = scrapy.Field()   # True if the item has an active discount
+    sku                 = scrapy.Field()   # e.g., "cp-30128201" from URL
