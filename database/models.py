@@ -137,11 +137,12 @@ class ProductSnapshot(Base):
     # Product identity
     product_name        = Column(String(255), nullable=False)
     product_url         = Column(Text, unique=True, nullable=False)  # Deduplication key
-    sku                 = Column(String(50))        # e.g., "cp-30128201" extracted from URL
+    sku                 = Column(String(255))       # e.g., "cp-30128201" or Shopify handles
 
     # Category (auto-derived from the crawled URL path, no manual config)
     category_path       = Column(String(255))   # e.g., "sale/clothing/jackets-blazers"
     category_label      = Column(String(100))   # e.g., "Jackets Blazers"
+    master_category     = Column(String(100)) # Standardized category (populated by GLiNER)
 
     # Exact pricing — direct from HTML, always accurate
     original_price      = Column(Float)         # MRP / strikethrough price (NULL for full-price items)
@@ -160,3 +161,36 @@ class ProductSnapshot(Base):
 
     def __repr__(self):
         return f"<ProductSnapshot(id={self.id}, name='{self.product_name[:40]}', discount={self.discount_percentage}%)>"
+
+
+class BaseStoreProduct(Base):
+    """
+    Stores product data extracted from our own internal MySQL store (fashion_retail).
+    This table mirrors the structure of `product_snapshots` to enable easy
+    apples-to-apples comparisons (e.g. UNIONs) against competitors, but keeps
+    our internal data logically separated.
+    """
+    __tablename__ = 'base_store_products'
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Product identity
+    product_id          = Column(String(50), unique=True, nullable=False) # MySQL product_id (SKU)
+    product_name        = Column(String(255), nullable=False)
+    brand               = Column(String(100), nullable=False)
+    gender              = Column(String(50))
+    
+    # Category mapping
+    category_label      = Column(String(100))   # Raw category from MySQL
+    master_category     = Column(String(100))   # Standardized category (populated by GLiNER)
+
+    # Pricing & Discounts (computed from historical order_item data)
+    original_price      = Column(Float)         # MySQL MRP
+    sale_price          = Column(Float)         # Computed: MRP * (1 - avg_discount)
+    discount_percentage = Column(Float)         # Average discount % from order history
+
+    # Temporal tracking
+    last_synced_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<BaseStoreProduct(id={self.product_id}, name='{self.product_name[:40]}', discount={self.discount_percentage}%)>"

@@ -134,7 +134,7 @@ class ProductSnapshotPipeline:
         existing = self.session.query(ProductSnapshot).filter_by(product_url=product_url).first()
 
         if existing:
-            # Update pricing and timestamp; preserve first_seen_at
+            # Update dynamic fields
             existing.product_name        = item.get('product_name')
             existing.original_price      = item.get('original_price')
             existing.sale_price          = item.get('sale_price')

@@ -23,28 +23,46 @@ from database.models import Promotion
 # against the product category entity extracted by GLiNER.
 # ─────────────────────────────────────────────
 PROMOTION_CATEGORIES = [
-    "Apparel",
+    "Tops",
+    "Bottoms",
+    "Dresses & Jumpsuits",
+    "Outerwear",
+    "Activewear",
+    "Intimates & Sleepwear",
+    "Co-Ords",
+    "Ethnic Wear",
     "Footwear",
-    "Beauty & Personal Care",
-    "Accessories",
+    "Bags & Wallets",
     "Jewellery",
-    "Home & Decor",
+    "Accessories",
+    "Beauty & Personal Care",
     "Kids",
-    "Sports & Fitness",
+    "Home & Decor",
     "Electronics",
+    "Collections & Edits",
+    "General Apparel",
 ]
 
 # Keyword → Category mapping for smart matching
 CATEGORY_KEYWORDS = {
-    "Apparel":               ["apparel", "shirt", "dress", "kurta", "jeans", "tshirt", "t-shirt", "ethnic", "saree", "lehenga", "suit", "kurti", "dungaree", "palazzo", "pyjama", "sweatshirt", "hoodie", "mojri", "trousers", "shorts", "skirt", "blouse", "salwar", "dupatta"],
-    "Footwear":              ["footwear", "shoe", "sandal", "slipper", "sneaker", "boot", "heel", "loafer", "flip flop", "moccasin"],
-    "Beauty & Personal Care":["beauty", "makeup", "lipstick", "mascara", "foundation", "skincare", "haircare", "cosmetic", "perfume", "grooming", "personal care", "serum", "moisturiser", "moisturizer", "kajal", "eyeliner", "shampoo", "conditioner"],
-    "Accessories":           ["accessory", "accessories", "bag", "wallet", "belt", "sunglasses", "watch", "purse", "handbag", "backpack", "sunglass", "cap", "hat", "scarf"],
+    "Tops":                  ["shirt", "top", "topwear", "tshirt", "t-shirt", "tee", "blouse", "cami", "tank", "knit", "tunic"],
+    "Bottoms":               ["jean", "pant", "trouser", "short", "skirt", "legging", "jegging", "bottom", "bottomwear", "bottom wear", "palazzo", "chino"],
+    "Dresses & Jumpsuits":   ["dress", "dreses", "jumpsuit", "playsuit", "romper", "gown", "pinafore"],
+    "Outerwear":             ["jacket", "coat", "blazer", "sweater", "cardigan", "outerwear", "shacket", "hoodie", "sweatshirt", "waistcoat"],
+    "Activewear":            ["activewear", "athleisure", "sports", "gym", "yoga", "cycling", "sportswear", "trekking", "football"],
+    "Intimates & Sleepwear": ["intimate", "lingerie", "bra", "brief", "underwear", "sleepwear", "night", "pyjama", "lounge", "robe", "wrap"],
+    "Co-Ords":               ["co ord", "co-ord", "set", "suit"],
+    "Ethnic Wear":           ["ethnic", "saree", "lehenga", "kurta", "kurti", "dupatta", "sherwani", "dhoti", "lungi", "salwar"],
+    "Footwear":              ["footwear", "shoe", "sandal", "slipper", "sneaker", "boot", "heel", "loafer", "flip flop", "moccasin", "mojri", "kolhapuri", "flat"],
+    "Bags & Wallets":        ["bag", "wallet", "purse", "handbag", "backpack", "clutch", "tote"],
     "Jewellery":             ["jewellery", "jewelry", "ring", "necklace", "earring", "bracelet", "pendant", "gold", "silver", "diamond", "bangle", "mangalsutra"],
+    "Accessories":           ["accessory", "accessories", "belt", "sunglasses", "sunglass", "watch", "cap", "hat", "scarf", "scarves", "cape", "hair", "glove"],
+    "Beauty & Personal Care":["beauty", "makeup", "lipstick", "mascara", "foundation", "skincare", "haircare", "cosmetic", "perfume", "grooming", "personal care", "serum", "moisturiser", "moisturizer", "kajal", "eyeliner", "shampoo", "conditioner", "fragrance"],
+    "Kids":                  ["kids", "children", "baby", "toddler", "infant", "toy", "kidswear", "girl", "boy"],
     "Home & Decor":          ["home decor", "furniture", "kitchen", "bedding", "curtain", "cushion", "lamp", "bedsheet", "bed sheet", "pillow", "mattress", "sofa", "dining"],
-    "Kids":                  ["kids", "children", "baby", "toddler", "infant", "toy", "kidswear"],
-    "Sports & Fitness":      ["sports", "fitness", "gym", "yoga", "cycling", "activewear", "sportswear", "trekking", "cricket", "football", "badminton"],
     "Electronics":           ["electronics", "mobile", "phone", "laptop", "tablet", "earphone", "headphone", "gadget", "camera", "smartwatch", "speaker"],
+    "Collections & Edits":   ["collection", "new arrival", "edit", "trend", "marquee", "devil", "signature", "essentials", "petite", "curve", "monochrome", "festive"],
+    "General Apparel":       ["apparel", "clothing", "fashion", "workwear", "menswear", "womenswear", "office wear", "upcycled"],
 }
 
 
@@ -68,7 +86,26 @@ def classify_category(text: str) -> str | None:
     for category, keywords in CATEGORY_KEYWORDS.items():
         hit_count = sum(1 for kw in keywords if kw in text_lower)
         if hit_count > 0:
-            scores[category] = hit_count
+            # Apply priority weighting to resolve ties intelligently
+            priority_bonus = 0
+            if category == "Kids":
+                priority_bonus = 5
+            elif category == "Ethnic Wear":
+                priority_bonus = 4
+            elif category == "Footwear":
+                priority_bonus = 4
+            elif category == "Intimates & Sleepwear":
+                priority_bonus = 3
+            elif category == "Activewear":
+                priority_bonus = 3
+            elif category == "Dresses & Jumpsuits":
+                priority_bonus = 2
+            elif category == "Outerwear":
+                priority_bonus = 2
+            elif category == "General Apparel" or category == "Collections & Edits":
+                priority_bonus = -2 # Lower priority, only wins if nothing else matches
+
+            scores[category] = hit_count + priority_bonus
 
     if not scores:
         return None
@@ -77,21 +114,17 @@ def classify_category(text: str) -> str | None:
     ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     top_category, top_score = ranked[0]
 
-    # If 3 or more distinct categories match, it's a sitewide/generic offer
-    if len(ranked) >= 3:
-        return "Multi-Category"
-
     if len(ranked) == 1:
         # Only one category matched — clear winner
         return top_category
 
     second_score = ranked[1][1]
 
-    # Dominant if top score is at least 2x the second (e.g. 4 hits vs 1)
-    if top_score >= 2 * second_score:
+    # Dominant if top score is strictly greater than second score (tie-breaker)
+    if top_score > second_score:
         return top_category
 
-    # Two categories matched with similar scores — ambiguous
+    # Two categories matched with exact same score — ambiguous
     return "Multi-Category"
 
 
@@ -268,6 +301,66 @@ def enrich_promotions(batch_size: int = 50) -> dict:
     print(f"Enrichment complete: {enriched} enriched, {errors} errors.")
     return summary
 
+def enrich_product_categories() -> dict:
+    """
+    Highly optimized AI category enrichment for product snapshots.
+    Extracts only distinct, unmapped category_labels, runs GLiNER on them,
+    and bulk-updates the database.
+    """
+    from database.models import ProductSnapshot
+    model = get_model()
+    session = get_session()
+    enriched_labels = 0
+    updated_products = 0
+
+    try:
+        # Find unique category labels that haven't been mapped
+        query = session.query(ProductSnapshot.category_label).filter(
+            ProductSnapshot.category_label.isnot(None),
+            ProductSnapshot.master_category.is_(None)
+        ).distinct()
+        
+        unmapped_labels = [row[0] for row in query.all()]
+        
+        if unmapped_labels:
+            print(f"Found {len(unmapped_labels)} unique unmapped category labels. Running GLiNER inference...")
+            
+            for label in unmapped_labels:
+                # Ask GLiNER what category this label belongs to
+                entities = model.predict_entities(label, ["product category"])
+                
+                category_entity = entities[0]['text'] if entities else None
+                
+                # Use our smart matching to map GLiNER's prediction (or the raw label) to PROMOTION_CATEGORIES
+                master_cat = classify_category(category_entity)
+                if not master_cat:
+                    master_cat = classify_from_raw_text(label)
+                    
+                # Fallback
+                if not master_cat:
+                    master_cat = "Other"
+                    
+                # Bulk update all products sharing this label
+                update_count = session.query(ProductSnapshot).filter(
+                    ProductSnapshot.category_label == label,
+                    ProductSnapshot.master_category.is_(None)
+                ).update({"master_category": master_cat}, synchronize_session=False)
+                
+                session.commit()
+                enriched_labels += 1
+                updated_products += update_count
+                
+    except Exception as e:
+        session.rollback()
+        print(f"Error enriching product categories: {e}")
+    finally:
+        session.close()
+
+    summary = {'unique_labels_enriched': enriched_labels, 'total_products_updated': updated_products}
+    print(f"Product category enrichment complete: {enriched_labels} unique labels mapped, {updated_products} products updated.")
+    return summary
+
 
 if __name__ == "__main__":
     enrich_promotions(batch_size=100)
+    enrich_product_categories()

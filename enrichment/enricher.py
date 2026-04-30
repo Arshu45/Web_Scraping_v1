@@ -30,9 +30,10 @@ if ENRICHMENT_PROVIDER not in SUPPORTED_PROVIDERS:
 # Route to the correct module
 if ENRICHMENT_PROVIDER == "groq":
     from enrichment.llm_extractor import enrich_promotions
+    enrich_product_categories = lambda: {'unique_labels_enriched': 0, 'total_products_updated': 0} # LLM mapping not supported yet
     print(f"[Enricher] Provider: Groq LLM (model: {os.getenv('GROQ_MODEL', 'llama-3.1-8b-instant')})")
 else:
-    from enrichment.gliner_extractor import enrich_promotions
+    from enrichment.gliner_extractor import enrich_promotions, enrich_product_categories
     print(f"[Enricher] Provider: GLiNER (local model)")
 
-__all__ = ["enrich_promotions"]
+__all__ = ["enrich_promotions", "enrich_product_categories"]

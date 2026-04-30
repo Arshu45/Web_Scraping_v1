@@ -28,7 +28,7 @@ from prefect.context import get_run_context
 
 from database.connection import get_session
 from database.models import ScrapingRun, ScrapingSource
-from enrichment.enricher import enrich_promotions
+# Removed import to avoid shadowing
 
 
 # ─────────────────────────────────────────────
@@ -161,10 +161,23 @@ def run_spider_subprocess(spider_name: str) -> dict:
 # ─────────────────────────────────────────────
 @task(name="Enrich Data")
 def enrich_all(batch_size: int = 200) -> dict:
+    from enrichment.enricher import enrich_promotions, enrich_product_categories
     logger = get_run_logger()
+    
     logger.info("Starting enrichment pass on all new promotions...")
-    summary = enrich_promotions(batch_size=batch_size)
-    logger.info(f"Enrichment complete: {summary}")
+    promo_summary = enrich_promotions(batch_size=batch_size)
+    
+    logger.info("Starting AI enrichment for product categories...")
+    prod_summary = enrich_product_categories()
+    
+    summary = {
+        'promotions_enriched': promo_summary.get('enriched', 0),
+        'promotions_errors': promo_summary.get('errors', 0),
+        'unique_product_categories_enriched': prod_summary.get('unique_labels_enriched', 0),
+        'total_products_updated': prod_summary.get('total_products_updated', 0)
+    }
+    
+    logger.info(f"Enrichment complete. Promos enriched: {summary['promotions_enriched']}, Products categorized: {summary['total_products_updated']}")
     return summary
 
 
@@ -178,10 +191,11 @@ def generate_report(spider_results: list[dict], enrichment_summary: dict):
     passed = [r for r in spider_results if r.get('success')]
     failed = [r for r in spider_results if not r.get('success')]
 
-    # Separate out the forevernew snapshot stats for the summary header
-    fn_result = next((r for r in spider_results if r.get('spider') == 'forevernew_products'), {})
-    fn_ins = fn_result.get('items_inserted', 0)
-    fn_upd = fn_result.get('items_updated', 0)
+    # Direct catalog spiders (ProductSnapshotPipeline) have items_scraped == items_inserted + items_updated
+    # Aggregator spiders have items_scraped tracked separately.
+    catalog_results = [r for r in spider_results if r.get('spider') and r['spider'].endswith('_products')]
+    cat_ins = sum(r.get('items_inserted', 0) for r in catalog_results)
+    cat_upd = sum(r.get('items_updated', 0) for r in catalog_results)
 
     report_lines = [
         "",
@@ -192,8 +206,7 @@ def generate_report(spider_results: list[dict], enrichment_summary: dict):
         f"║  ✅ Passed       : {len(passed):<27}║",
         f"║  ❌ Failed       : {len(failed):<27}║",
         f"║  💡 Enriched    : {enrichment_summary.get('enriched', 0):<27}║",
-        f"║  📸 Products (new): {fn_ins:<25}║",
-        f"║  🔄 Products (upd): {fn_upd:<25}║",
+        f"║  🛒 Snapshots   : {cat_ins} new, {cat_upd} upd       ║",
         "╠══════════════════════════════════════════════╣",
         "║  SPIDER CHECKLIST                            ║",
         "╠══════════════════════════════════════════════╣",
