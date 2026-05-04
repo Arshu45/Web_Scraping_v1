@@ -8,6 +8,11 @@ load_dotenv()
 
 from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import create_sql_agent
+from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
+import langchain
+
+# Optional: Enable terminal logging of exactly what langchain is doing
+langchain.verbose = True
 
 from llm.factory import get_langchain_llm
 from utils.styles import apply_css, BRAND_COLORS
@@ -103,7 +108,7 @@ Answer in a clear, structured way with key findings highlighted."""
         llm=llm,
         db=db,
         agent_type="openai-tools",
-        verbose=False,
+        verbose=True,  # Changed to True so terminal shows logs
         prefix=prefix,
         max_iterations=10,
         handle_parsing_errors=True,
@@ -142,11 +147,16 @@ if question:
             st.error(error)
             st.session_state.messages.append({"role": "assistant", "content": error})
         else:
-            with st.spinner("🔍 Analysing your data..."):
-                try:
-                    result = agent.invoke({"input": question})
-                    answer = result.get("output", str(result))
-                except Exception as e:
+            # We remove the hardcoded st.spinner and instead use StreamlitCallbackHandler
+            # which will show real-time UI expanders of what the agent is thinking/doing
+            try:
+                st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True)
+                result = agent.invoke(
+                    {"input": question},
+                    config={"callbacks": [st_callback]}
+                )
+                answer = result.get("output", str(result))
+            except Exception as e:
                     error_str = str(e)
                     # ── 429 rate-limit: rebuild agent with fallback LLM ──────
                     if "429" in error_str or "rate_limit_exceeded" in error_str or "Rate limit" in error_str:
@@ -168,10 +178,14 @@ if question:
                             fb_agent = create_sql_agent(
                                 llm=fb_llm, db=fb_db,
                                 agent_type="openai-tools",
-                                verbose=False, max_iterations=8,
+                                verbose=True, max_iterations=8,
                                 handle_parsing_errors=True,
                             )
-                            result = fb_agent.invoke({"input": question})
+                            st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True)
+                            result = fb_agent.invoke(
+                                {"input": question},
+                                config={"callbacks": [st_callback]}
+                            )
                             answer = result.get("output", str(result))
                             answer = f"*(answered by fallback provider: {fallback_name})*\n\n{answer}"
                         except Exception as fb_e:

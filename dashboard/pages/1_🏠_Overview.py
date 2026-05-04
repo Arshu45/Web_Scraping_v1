@@ -73,10 +73,12 @@ fig2 = go.Figure(data=go.Heatmap(
     z=pivot.values,
     x=pivot.columns.tolist(),
     y=pivot.index.tolist(),
-    colorscale=[[0, "rgba(108,99,255,0.05)"], [0.5, "rgba(108,99,255,0.4)"], [1, "rgba(108,99,255,0.9)"]],
+    colorscale="Plasma",
     text=pivot.values.astype(int),
     texttemplate="%{text}",
     hovertemplate="Brand: %{y}<br>Category: %{x}<br>Products: %{text}<extra></extra>",
+    xgap=2,
+    ygap=2
 ))
 fig2.update_layout(**PLOT_LAYOUT, height=220, xaxis=dict(tickangle=-30))
 st.plotly_chart(fig2, width="stretch")

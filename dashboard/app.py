@@ -18,7 +18,7 @@ st.sidebar.markdown("""
         Market Intelligence
     </div>
     <div style="font-size: 0.75rem; color: #666; margin-top: 4px;">
-        Gold Layer Dashboard
+        Dashboard
     </div>
     <hr style="border-color: rgba(255,255,255,0.08); margin-top: 1rem;">
 </div>
@@ -32,7 +32,7 @@ st.sidebar.markdown("""
 - 🏪 Our Store — 11,247 products  
 - 🛍️ Forever New — scraped  
 - 🛍️ Vero Moda — scraped  
-- 🎯 Promotions — GrabOn / CouponDunia  
+<!-- - 🎯 Promotions — GrabOn / CouponDunia   -->
 
 ---
 """)
@@ -74,14 +74,15 @@ with col2:
         <div style="color: #888; font-size: 0.85rem; margin-top: 6px;">Category-by-category head-to-head analysis</div>
     </div>""", unsafe_allow_html=True)
 
-with col3:
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, rgba(67,217,173,0.15), rgba(67,217,173,0.05));
-                border: 1px solid rgba(67,217,173,0.3); border-radius: 16px; padding: 24px; text-align: center;">
-        <div style="font-size: 2.5rem;">🎯</div>
-        <div style="font-weight: 700; color: #fff; font-size: 1.1rem; margin-top: 8px;">Promotions Intel</div>
-        <div style="color: #888; font-size: 0.85rem; margin-top: 6px;">Live coupons, promo types, discount ranges</div>
-    </div>""", unsafe_allow_html=True)
+# with col3:
+#     st.markdown("""
+#     <div style="background: linear-gradient(135deg, rgba(67,217,173,0.15), rgba(67,217,173,0.05));
+#                 border: 1px solid rgba(67,217,173,0.3); border-radius: 16px; padding: 24px; text-align: center;">
+#         <div style="font-size: 2.5rem;">🎯</div>
+#         <div style="font-weight: 700; color: #fff; font-size: 1.1rem; margin-top: 8px;">Promotions Intel</div>
+#         <div style="color: #888; font-size: 0.85rem; margin-top: 6px;">Live coupons, promo types, discount ranges</div>
+#     </div>""", unsafe_allow_html=True)
+
 
 st.markdown("<br>", unsafe_allow_html=True)
 col4, col5 = st.columns(2)
