@@ -4,104 +4,107 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 import plotly.graph_objects as go
 
-from utils.styles import apply_css, BRAND_COLORS, PLOT_LAYOUT
+from utils.styles import apply_css, PLOT_LAYOUT, page_header, section_label, GRID_COLOR
 from utils.db import get_price_band_data
 
-st.set_page_config(page_title="Price Positioning | Market Intelligence", page_icon="💰", layout="wide")
+st.set_page_config(page_title="Price Positioning · Market Intelligence", page_icon="◈", layout="wide")
 apply_css()
 
-st.markdown("<h1 style='color:#fff; font-weight:800;'>💰 Price Positioning</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color:#888;'>How does our store's price tier compare to competitors? Budget, mid-range, or premium?</p>", unsafe_allow_html=True)
-st.markdown("---")
+page_header("Price Positioning", "Budget vs mid-range vs premium — where does each brand sit?")
 
-with st.spinner("Loading price data..."):
+with st.spinner(""):
     band_counts, band_order = get_price_band_data()
 
 brands = ["Our Store", "Forever New", "Vero Moda"]
-
-# ── Side-by-side Donut Charts ─────────────────────────────────────────
-st.markdown("<div class='section-header'>Price Band Distribution by Brand</div>", unsafe_allow_html=True)
-
-band_colors = {
-    "Budget (<₹1.5K)":       "#43D9AD",
-    "Mid-Range (₹1.5K–5K)":  "#6C63FF",
-    "Premium (₹5K–10K)":     "#FF6584",
-    "Luxury (>₹10K)":        "#FFB347",
+BAND_COLORS = {
+    "Budget (<₹1.5K)":      "#1FAF8A",
+    "Mid-Range (₹1.5K–5K)": "#5B50E8",
+    "Premium (₹5K–10K)":    "#D04A6A",
+    "Luxury (>₹10K)":       "#C4892A",
 }
+
+# ── Donuts ─────────────────────────────────────────────────────────
+section_label("Price Band Distribution by Brand")
 
 cols = st.columns(3)
 for idx, brand in enumerate(brands):
     bdf = band_counts[band_counts["brand"] == brand]
     bdf = bdf.set_index("price_band").reindex(band_order).fillna(0).reset_index()
     total = int(bdf["count"].sum())
-    clrs = [band_colors.get(b, "#aaa") for b in bdf["price_band"]]
+    clrs  = [BAND_COLORS.get(b, "#CCC") for b in bdf["price_band"]]
 
     fig = go.Figure(go.Pie(
-        labels=bdf["price_band"],
-        values=bdf["count"],
-        hole=0.6,
-        marker_colors=clrs,
-        textinfo="percent",
+        labels=bdf["price_band"], values=bdf["count"],
+        hole=0.65, marker_colors=clrs,
+        marker=dict(line=dict(color="#FAFAFA", width=2)),
+        textinfo="percent", textfont=dict(size=11, color="#505060"),
         hovertemplate="<b>%{label}</b><br>%{value:,} products (%{percent})<extra></extra>",
     ))
     fig.update_layout(
-        **PLOT_LAYOUT,
-        height=320,
-        title=dict(text=f"<b>{brand}</b><br><span style='font-size:12px;color:#888'>{total:,} products</span>", x=0.5),
+        **PLOT_LAYOUT, height=280,
+        title=dict(
+            text=f"<b style='color:#1A1A2E;font-size:13px'>{brand}</b><br><span style='color:#A0A0B0;font-size:11px'>{total:,} products</span>",
+            x=0.5, xanchor="center",
+        ),
         showlegend=False,
-        annotations=[dict(text=brand.split()[0], x=0.5, y=0.5, font_size=14, font_color="#fff", showarrow=False)],
+        annotations=[dict(text=brand.split()[0], x=0.5, y=0.5, font=dict(size=13, color="#909098"), showarrow=False)],
     )
     with cols[idx]:
         st.plotly_chart(fig, width="stretch")
 
-# ── Legend ────────────────────────────────────────────────────────────
-legend_html = "".join([
-    f"<span style='background:{c}; width:12px; height:12px; display:inline-block; border-radius:3px; margin-right:6px;'></span><span style='color:#ccc; margin-right:20px;'>{b}</span>"
-    for b, c in band_colors.items()
+# ── Legend ─────────────────────────────────────────────────────────
+legend_html = " ".join([
+    f"<span style='display:inline-flex;align-items:center;gap:6px;margin-right:20px;'>"
+    f"<span style='width:8px;height:8px;border-radius:50%;background:{c};display:inline-block'></span>"
+    f"<span style='font-size:0.78rem;color:#909098;'>{b}</span></span>"
+    for b, c in BAND_COLORS.items()
 ])
-st.markdown(f"<div style='text-align:center; margin-top:-10px; margin-bottom: 1rem;'>{legend_html}</div>", unsafe_allow_html=True)
+st.markdown(f"<div style='text-align:center;margin:-8px 0 24px 0'>{legend_html}</div>", unsafe_allow_html=True)
 
-# ── Stacked Bar: Price Band per Band across brands ────────────────────
-st.markdown("<div class='section-header'>Price Band Comparison — Side by Side</div>", unsafe_allow_html=True)
+# ── Stacked Bar ────────────────────────────────────────────────────
+section_label("Price Band Comparison — All Brands")
 
 fig2 = go.Figure()
 for band in band_order:
-    vals = []
-    for brand in brands:
-        row = band_counts[(band_counts["brand"] == brand) & (band_counts["price_band"] == band)]
-        vals.append(int(row["count"].values[0]) if not row.empty else 0)
+    vals = [
+        int(band_counts[(band_counts["brand"] == brand) & (band_counts["price_band"] == band)]["count"].values[0])
+        if not band_counts[(band_counts["brand"] == brand) & (band_counts["price_band"] == band)].empty else 0
+        for brand in brands
+    ]
     fig2.add_trace(go.Bar(
-        name=band,
-        x=brands,
-        y=vals,
-        marker_color=band_colors.get(band, "#aaa"),
-        opacity=0.9,
-        text=vals,
-        textposition="inside",
+        name=band, x=brands, y=vals,
+        marker_color=BAND_COLORS.get(band, "#CCC"), marker_line_width=0, opacity=0.88,
+        text=vals, textposition="inside", textfont=dict(size=10, color="#FFFFFF"),
     ))
-
 fig2.update_layout(
-    **PLOT_LAYOUT, barmode="stack", height=380,
-    yaxis=dict(title="Number of Products", gridcolor="rgba(255,255,255,0.05)"),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+    **PLOT_LAYOUT, barmode="stack", height=360, bargap=0.35,
+    yaxis=dict(title="Number of Products", gridcolor=GRID_COLOR, zeroline=False),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, bgcolor="rgba(0,0,0,0)"),
 )
 st.plotly_chart(fig2, width="stretch")
 
-# ── Insight Cards ─────────────────────────────────────────────────────
-st.markdown("<div class='section-header'>📌 Insights</div>", unsafe_allow_html=True)
+# ── Observation callouts ───────────────────────────────────────────
+section_label("Key Observations")
 
 col1, col2 = st.columns(2)
 with col1:
-    st.info("""
-**Price Tier Overlap**  
-Compare where price bands overlap between Our Store and competitors.
-If competitors have more "Budget" products but we're mostly "Mid-Range",
-they are capturing price-sensitive customers we're missing.
-""")
+    st.markdown("""
+    <div style="background:#FFFFFF;border:1px solid #E5E5EE;border-left:3px solid #5B50E8;
+                border-radius:8px;padding:16px 18px;">
+        <div style="font-size:0.72rem;font-weight:600;color:#5B50E8;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;">Price Tier Overlap</div>
+        <div style="font-size:0.82rem;color:#909098;line-height:1.6;">
+            If competitors have more Budget products but we're mostly Mid-Range,
+            they are capturing price-sensitive customers we're missing.
+        </div>
+    </div>""", unsafe_allow_html=True)
+
 with col2:
-    st.warning("""
-**Competitor Discount Strategy**  
-Even if our MRP is similar to competitors, they offer **40–55% discounts**
-while we average **~12%**. This means competitors' effective selling price
-is significantly lower despite comparable list prices.
-""")
+    st.markdown("""
+    <div style="background:#FFFFFF;border:1px solid #E5E5EE;border-left:3px solid #D04A6A;
+                border-radius:8px;padding:16px 18px;">
+        <div style="font-size:0.72rem;font-weight:600;color:#D04A6A;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;">Competitor Discount Strategy</div>
+        <div style="font-size:0.82rem;color:#909098;line-height:1.6;">
+            Competitors offer 40–55% discounts while we average ~12%. Their effective
+            selling price is significantly lower despite comparable list prices.
+        </div>
+    </div>""", unsafe_allow_html=True)

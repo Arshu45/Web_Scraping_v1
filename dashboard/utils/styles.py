@@ -1,23 +1,27 @@
 """
-Dashboard theme — color palette and chart config.
+Dashboard design system — minimal, clean, light theme.
 """
 
-# Brand colors — consistent across all pages
+# ── Brand palette ───────────────────────────────────────────────────────
 BRAND_COLORS = {
-    "Our Store":   "#6C63FF",   # Vibrant purple
-    "Forever New": "#FF6584",   # Rose pink
-    "Vero Moda":   "#43D9AD",   # Teal green
+    "Our Store":   "#5B50E8",   # Indigo
+    "Forever New": "#D04A6A",   # Rose
+    "Vero Moda":   "#1FAF8A",   # Teal
 }
 
 BRAND_LIST = ["Our Store", "Forever New", "Vero Moda"]
 
-# Plotly layout defaults for dark mode
+# ── Shared chart constants ──────────────────────────────────────────────
+GRID_COLOR = "#EBEBF2"
+
+# ── Plotly light defaults ───────────────────────────────────────────────
 PLOT_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(family="Inter, sans-serif", color="#E0E0E0"),
-    margin=dict(l=20, r=20, t=40, b=20),
+    font=dict(family="'Inter', sans-serif", color="#707080", size=12),
+    margin=dict(l=16, r=16, t=36, b=16),
 )
+
 
 def apply_css():
     import streamlit as st
@@ -25,57 +29,119 @@ def apply_css():
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    html, body, [class*="css"] {
+        font-family: 'Inter', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+    }
 
-    /* Dark background */
-    .stApp { background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%); }
-    .block-container { padding-top: 1.5rem; }
+    /* ── Base ─────────────────────────────────────────────────────── */
+    .stApp { background-color: #FAFAFA; }
+    .block-container { padding-top: 3.5rem !important; padding-bottom: 3rem; max-width: 1280px; }
 
-    /* Sidebar */
+    /* ── Sidebar ─────────────────────────────────────────────────── */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #16213e 0%, #0f3460 100%);
-        border-right: 1px solid rgba(255,255,255,0.08);
+        background-color: #F4F4F8;
+        border-right: 1px solid #E0E0EA;
     }
-    section[data-testid="stSidebar"] * { color: #E0E0E0 !important; }
+    section[data-testid="stSidebar"] * { color: #505060 !important; }
 
-    /* KPI cards */
+    /* ── Dividers ────────────────────────────────────────────────── */
+    hr { border-color: #E5E5EE !important; margin: 1.5rem 0 !important; }
+
+    /* ── Page title ──────────────────────────────────────────────── */
+    .page-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #1A1A2E;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.15rem;
+    }
+    .page-subtitle {
+        font-size: 0.85rem;
+        color: #909098;
+        margin-bottom: 0;
+    }
+
+    /* ── Section label ───────────────────────────────────────────── */
+    .section-label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #A0A0B0;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin: 2rem 0 1rem 0;
+    }
+
+    /* ── KPI cards ───────────────────────────────────────────────── */
     .kpi-card {
-        background: linear-gradient(135deg, rgba(108,99,255,0.15), rgba(67,217,173,0.1));
-        border: 1px solid rgba(108,99,255,0.3);
-        border-radius: 16px;
-        padding: 20px 24px;
-        text-align: center;
-        backdrop-filter: blur(10px);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        background: #FFFFFF;
+        border: 1px solid #E5E5EE;
+        border-radius: 10px;
+        padding: 18px 20px;
     }
-    .kpi-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 8px 32px rgba(108,99,255,0.25);
+    .kpi-label {
+        font-size: 0.72rem;
+        font-weight: 500;
+        color: #A0A0B0;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 8px;
     }
-    .kpi-label { font-size: 0.8rem; font-weight: 500; color: #888; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 6px; }
-    .kpi-value { font-size: 2.2rem; font-weight: 700; color: #fff; line-height: 1.1; }
-    .kpi-sub   { font-size: 0.8rem; color: #aaa; margin-top: 4px; }
-
-    /* Gap signal badges */
-    .badge-red    { background: rgba(255,99,99,0.2); color: #ff6363; border: 1px solid rgba(255,99,99,0.4); border-radius: 8px; padding: 2px 10px; font-weight: 600; font-size: 0.82rem; }
-    .badge-yellow { background: rgba(255,200,80,0.2); color: #ffc850; border: 1px solid rgba(255,200,80,0.4); border-radius: 8px; padding: 2px 10px; font-weight: 600; font-size: 0.82rem; }
-    .badge-green  { background: rgba(67,217,173,0.2); color: #43d9ad; border: 1px solid rgba(67,217,173,0.4); border-radius: 8px; padding: 2px 10px; font-weight: 600; font-size: 0.82rem; }
-
-    /* Section headers */
-    .section-header {
-        font-size: 1.1rem; font-weight: 600; color: #c0c0d8;
-        border-left: 3px solid #6C63FF; padding-left: 10px;
-        margin: 1.5rem 0 0.8rem 0;
+    .kpi-value {
+        font-size: 1.9rem;
+        font-weight: 600;
+        color: #1A1A2E;
+        letter-spacing: -0.03em;
+        line-height: 1;
+    }
+    .kpi-sub {
+        font-size: 0.75rem;
+        color: #C0C0CC;
+        margin-top: 6px;
     }
 
-    /* Tables */
-    .stDataFrame { border-radius: 12px; overflow: hidden; }
-    .stDataFrame thead th { background: #1a1a2e !important; color: #6C63FF !important; }
+    /* ── Gap badges ─────────────────────────────────────────────── */
+    .badge-red    { color: #C0354A; background: rgba(208,74,106,0.08); border: 1px solid rgba(208,74,106,0.25); border-radius: 5px; padding: 2px 8px; font-size: 0.78rem; font-weight: 500; }
+    .badge-yellow { color: #9A7020; background: rgba(180,130,40,0.08);  border: 1px solid rgba(180,130,40,0.25);  border-radius: 5px; padding: 2px 8px; font-size: 0.78rem; font-weight: 500; }
+    .badge-green  { color: #1A8A68; background: rgba(31,175,138,0.08);  border: 1px solid rgba(31,175,138,0.25);  border-radius: 5px; padding: 2px 8px; font-size: 0.78rem; font-weight: 500; }
 
-    /* Hide streamlit branding */
+    /* ── Tables ──────────────────────────────────────────────────── */
+    table { width: 100%; border-collapse: collapse; }
+    thead tr { border-bottom: 1px solid #E5E5EE; }
+    thead th { font-size: 0.72rem; font-weight: 600; color: #A0A0B0; text-transform: uppercase; letter-spacing: 0.08em; padding: 8px 12px; text-align: left; background: transparent; }
+    tbody tr { border-bottom: 1px solid #F2F2F6; }
+    tbody tr:hover { background: #F6F6FA; }
+    tbody td { font-size: 0.85rem; color: #505060; padding: 9px 12px; }
+
+    /* ── Streamlit widget tweaks ──────────────────────────────────── */
+    .stSelectbox > div > div, .stMultiSelect > div > div {
+        background: #FFFFFF !important;
+        border-color: #E5E5EE !important;
+        color: #1A1A2E !important;
+        border-radius: 8px !important;
+    }
+
+    /* ── Chat ────────────────────────────────────────────────────── */
+    .stChatMessage { background: #FFFFFF !important; border: 1px solid #E5E5EE !important; border-radius: 10px !important; margin-bottom: 0.5rem; }
+    .stChatInputContainer { border-top: 1px solid #E5E5EE !important; background: #FAFAFA !important; }
+
+    /* ── Hide branding ───────────────────────────────────────────── */
     #MainMenu, footer { visibility: hidden; }
     </style>
     """, unsafe_allow_html=True)
+
+
+def page_header(title: str, subtitle: str = ""):
+    import streamlit as st
+    st.markdown(f"<div class='page-title'>{title}</div>", unsafe_allow_html=True)
+    if subtitle:
+        st.markdown(f"<div class='page-subtitle'>{subtitle}</div>", unsafe_allow_html=True)
+    st.markdown("<hr>", unsafe_allow_html=True)
+
+
+def section_label(text: str):
+    import streamlit as st
+    st.markdown(f"<div class='section-label'>{text}</div>", unsafe_allow_html=True)
 
 
 def kpi_card(label: str, value: str, sub: str = "") -> str:
@@ -89,8 +155,8 @@ def kpi_card(label: str, value: str, sub: str = "") -> str:
 
 def gap_badge(gap: float) -> str:
     if gap > 30:
-        return '<span class="badge-red">🔴 Critical Gap</span>'
+        return '<span class="badge-red">Critical Gap</span>'
     elif gap > 15:
-        return '<span class="badge-yellow">🟡 Monitor</span>'
+        return '<span class="badge-yellow">Monitor</span>'
     else:
-        return '<span class="badge-green">🟢 Competitive</span>'
+        return '<span class="badge-green">Competitive</span>'

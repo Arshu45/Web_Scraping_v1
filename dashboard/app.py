@@ -4,102 +4,72 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from utils.styles import apply_css
 
 st.set_page_config(
-    page_title="Market Intelligence Hub",
-    page_icon="📊",
+    page_title="Market Intelligence",
+    page_icon="◈",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 apply_css()
 
 st.sidebar.markdown("""
-<div style="text-align:center; padding: 1rem 0 1.5rem 0;">
-    <div style="font-size: 2.2rem;">📊</div>
-    <div style="font-size: 1.1rem; font-weight: 700; color: #6C63FF; letter-spacing: 0.04em;">
-        Market Intelligence
-    </div>
-    <div style="font-size: 0.75rem; color: #666; margin-top: 4px;">
-        Dashboard
-    </div>
-    <hr style="border-color: rgba(255,255,255,0.08); margin-top: 1rem;">
+<div style="padding: 1.25rem 0 1.5rem 0;">
+    <div style="font-size: 0.7rem; font-weight: 600; color: #A0A0B0; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.5rem;">Platform</div>
+    <div style="font-size: 1rem; font-weight: 600; color: #1A1A2E; letter-spacing: -0.01em;">Market Intelligence</div>
 </div>
+<hr style="border-color: #E0E0EA; margin: 0 0 1rem 0;">
 """, unsafe_allow_html=True)
 
 st.sidebar.markdown("""
-**Navigate using the pages above** ↑
+<div style="font-size: 0.7rem; font-weight: 600; color: #A0A0B0; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.75rem;">Data Sources</div>
+""", unsafe_allow_html=True)
 
----
-**Data Sources**
-- 🏪 Our Store — 11,247 products  
-- 🛍️ Forever New — scraped  
-- 🛍️ Vero Moda — scraped  
-<!-- - 🎯 Promotions — GrabOn / CouponDunia   -->
+for color, name, sub in [
+    ("#5B50E8", "Our Store",   "11,247 products"),
+    ("#D04A6A", "Forever New", "Scraped"),
+    ("#1FAF8A", "Vero Moda",   "Scraped"),
+]:
+    st.sidebar.markdown(f"""
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;">
+        <span style="color:{color};font-size:0.55rem;">●</span>
+        <div>
+            <div style="font-size:0.82rem;color:#505060;">{name}</div>
+            <div style="font-size:0.7rem;color:#A0A0B0;">{sub}</div>
+        </div>
+    </div>""", unsafe_allow_html=True)
 
----
-""")
-
-# ── Landing content ──
+# ── Hero ────────────────────────────────────────────────────────────
 st.markdown("""
-<div style="text-align:center; padding: 3rem 0 1rem 0;">
-    <div style="font-size: 3.5rem;">📊</div>
-    <h1 style="font-size: 2.5rem; font-weight: 800; color: #fff; margin-bottom: 0.5rem;">
-        Market Intelligence Hub
-    </h1>
-    <p style="color: #888; font-size: 1.1rem; max-width: 600px; margin: 0 auto;">
-        Competitive pricing intelligence across <strong style="color:#6C63FF;">Our Store</strong>,
-        <strong style="color:#FF6584;">Forever New</strong>, and
-        <strong style="color:#43D9AD;">Vero Moda</strong>.
-        Built on a live Gold Layer data pipeline.
-    </p>
+<div style="padding: 3rem 0 2rem 0;">
+    <div style="font-size:0.7rem;font-weight:600;color:#A0A0B0;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:1rem;">Market Intelligence</div>
+    <div style="font-size:2.8rem;font-weight:600;color:#1A1A2E;letter-spacing:-0.04em;line-height:1.15;margin-bottom:1rem;">
+        Retail Competitive<br>Intelligence Dashboard
+    </div>
+    <div style="font-size:0.9rem;color:#909098;max-width:520px;line-height:1.7;">
+        Real-time pricing and promotional intelligence across
+        <span style="color:#5B50E8;">Our Store</span>,
+        <span style="color:#D04A6A;">Forever New</span>, and
+        <span style="color:#1FAF8A;">Vero Moda</span>.
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown("---")
+st.markdown("<hr>", unsafe_allow_html=True)
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, rgba(108,99,255,0.15), rgba(108,99,255,0.05));
-                border: 1px solid rgba(108,99,255,0.3); border-radius: 16px; padding: 24px; text-align: center;">
-        <div style="font-size: 2.5rem;">🏠</div>
-        <div style="font-weight: 700; color: #fff; font-size: 1.1rem; margin-top: 8px;">Overview</div>
-        <div style="color: #888; font-size: 0.85rem; margin-top: 6px;">KPIs, overall discount gap, data freshness</div>
-    </div>""", unsafe_allow_html=True)
+# ── Navigation cards ────────────────────────────────────────────────
+pages = [
+    ("Overview",           "Executive KPIs, discount gaps, product volumes"),
+    ("Competitor Battle",  "Category-by-category head-to-head gap analysis"),
+    ("Category Analysis",  "Drill into discount depth and pricing per category"),
+    ("Price Positioning",  "Budget vs mid-range vs premium — where do we sit?"),
+    ("AI Analyst",         "Ask any business question in plain English"),
+]
 
-with col2:
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, rgba(255,101,132,0.15), rgba(255,101,132,0.05));
-                border: 1px solid rgba(255,101,132,0.3); border-radius: 16px; padding: 24px; text-align: center;">
-        <div style="font-size: 2.5rem;">⚔️</div>
-        <div style="font-weight: 700; color: #fff; font-size: 1.1rem; margin-top: 8px;">Competitor Battle</div>
-        <div style="color: #888; font-size: 0.85rem; margin-top: 6px;">Category-by-category head-to-head analysis</div>
-    </div>""", unsafe_allow_html=True)
-
-# with col3:
-#     st.markdown("""
-#     <div style="background: linear-gradient(135deg, rgba(67,217,173,0.15), rgba(67,217,173,0.05));
-#                 border: 1px solid rgba(67,217,173,0.3); border-radius: 16px; padding: 24px; text-align: center;">
-#         <div style="font-size: 2.5rem;">🎯</div>
-#         <div style="font-weight: 700; color: #fff; font-size: 1.1rem; margin-top: 8px;">Promotions Intel</div>
-#         <div style="color: #888; font-size: 0.85rem; margin-top: 6px;">Live coupons, promo types, discount ranges</div>
-#     </div>""", unsafe_allow_html=True)
-
-
-st.markdown("<br>", unsafe_allow_html=True)
-col4, col5 = st.columns(2)
-with col4:
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, rgba(255,200,80,0.15), rgba(255,200,80,0.05));
-                border: 1px solid rgba(255,200,80,0.3); border-radius: 16px; padding: 24px; text-align: center;">
-        <div style="font-size: 2.5rem;">📊</div>
-        <div style="font-weight: 700; color: #fff; font-size: 1.1rem; margin-top: 8px;">Category Analysis</div>
-        <div style="color: #888; font-size: 0.85rem; margin-top: 6px;">Drill into any fashion category across all brands</div>
-    </div>""", unsafe_allow_html=True)
-
-with col5:
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, rgba(150,100,255,0.15), rgba(150,100,255,0.05));
-                border: 1px solid rgba(150,100,255,0.3); border-radius: 16px; padding: 24px; text-align: center;">
-        <div style="font-size: 2.5rem;">💰</div>
-        <div style="font-weight: 700; color: #fff; font-size: 1.1rem; margin-top: 8px;">Price Positioning</div>
-        <div style="color: #888; font-size: 0.85rem; margin-top: 6px;">Budget vs mid vs premium — where do we sit?</div>
-    </div>""", unsafe_allow_html=True)
+cols = st.columns(3)
+for i, (name, desc) in enumerate(pages):
+    with cols[i % 3]:
+        st.markdown(f"""
+        <div style="background:#FFFFFF;border:1px solid #E5E5EE;border-radius:10px;
+                    padding:20px 22px;margin-bottom:12px;">
+            <div style="font-size:0.85rem;font-weight:600;color:#1A1A2E;margin-bottom:6px;">{name}</div>
+            <div style="font-size:0.78rem;color:#909098;line-height:1.5;">{desc}</div>
+        </div>""", unsafe_allow_html=True)
