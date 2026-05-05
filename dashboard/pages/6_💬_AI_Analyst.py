@@ -72,7 +72,7 @@ Answer clearly with key findings highlighted."""
         agent_type="openai-tools",
         verbose=True,
         prefix=prefix,
-        max_iterations=10,
+        max_iterations=15,
         handle_parsing_errors=True,
     )
     return agent, None
@@ -141,7 +141,7 @@ if question:
                         fb_agent = create_sql_agent(
                             llm=fb_llm, db=fb_db,
                             agent_type="openai-tools",
-                            verbose=True, max_iterations=8,
+                            verbose=True, max_iterations=15,
                             handle_parsing_errors=True,
                         )
                         st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True)

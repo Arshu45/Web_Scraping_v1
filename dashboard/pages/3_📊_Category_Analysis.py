@@ -31,28 +31,28 @@ if not selected_cats:
 
 filtered = df[df["master_category"].isin(selected_cats) & df["brand"].isin(selected_brands)]
 
-# ── Horizontal Bar ─────────────────────────────────────────────────
-section_label("Avg Discount by Category & Brand")
+# # ── Horizontal Bar ─────────────────────────────────────────────────
+# section_label("Avg Discount by Category & Brand")
 
-fig = go.Figure()
-for brand in selected_brands:
-    bdf = filtered[filtered["brand"] == brand].sort_values("master_category")
-    fig.add_trace(go.Bar(
-        name=brand, y=bdf["master_category"], x=bdf["avg_discount"],
-        orientation="h",
-        marker_color=BRAND_COLORS.get(brand, "#888"), marker_line_width=0, opacity=0.85,
-        text=[f"{v}%" for v in bdf["avg_discount"]],
-        textposition="outside", textfont=dict(size=10, color="#A0A0B0"),
-    ))
-fig.update_layout(
-    **PLOT_LAYOUT, barmode="group",
-    height=max(320, len(selected_cats) * 42 + 80),
-    bargap=0.2,
-    xaxis=dict(title="Avg Discount (%)", ticksuffix="%", gridcolor=GRID_COLOR, zeroline=False),
-    yaxis=dict(gridcolor=GRID_COLOR),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)"),
-)
-st.plotly_chart(fig, width="stretch")
+# fig = go.Figure()
+# for brand in selected_brands:
+#     bdf = filtered[filtered["brand"] == brand].sort_values("master_category")
+#     fig.add_trace(go.Bar(
+#         name=brand, y=bdf["master_category"], x=bdf["avg_discount"],
+#         orientation="h",
+#         marker_color=BRAND_COLORS.get(brand, "#888"), marker_line_width=0, opacity=0.85,
+#         text=[f"{v}%" for v in bdf["avg_discount"]],
+#         textposition="outside", textfont=dict(size=10, color="#A0A0B0"),
+#     ))
+# fig.update_layout(
+#     **PLOT_LAYOUT, barmode="group",
+#     height=max(320, len(selected_cats) * 42 + 80),
+#     bargap=0.2,
+#     xaxis=dict(title="Avg Discount (%)", ticksuffix="%", gridcolor=GRID_COLOR, zeroline=False),
+#     yaxis=dict(gridcolor=GRID_COLOR),
+#     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)"),
+# )
+# st.plotly_chart(fig, width="stretch")
 
 # ── Scatter ────────────────────────────────────────────────────────
 section_label("Product Volume vs Discount Depth")

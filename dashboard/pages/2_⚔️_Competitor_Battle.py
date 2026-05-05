@@ -34,22 +34,22 @@ st.markdown(
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Bar chart ─────────────────────────────────────────────────────
-section_label("Discount Gap Visual — Our Store vs Each Competitor")
+# section_label("Discount Gap Visual — Our Store vs Each Competitor")
 
-cats = gap_df["category"].tolist()
-fig = go.Figure()
-for brand, col in [("Our Store", "our_discount"), ("Forever New", "fn_discount"), ("Vero Moda", "vm_discount")]:
-    fig.add_trace(go.Bar(
-        name=brand, x=cats, y=gap_df[col],
-        marker_color=BRAND_COLORS[brand], marker_line_width=0, opacity=0.85,
-    ))
-fig.update_layout(
-    **PLOT_LAYOUT, barmode="group", height=400, bargap=0.2, bargroupgap=0.05,
-    xaxis=dict(tickangle=-30, gridcolor=GRID_COLOR, linecolor=GRID_COLOR),
-    yaxis=dict(title="Avg Discount (%)", gridcolor=GRID_COLOR, ticksuffix="%", zeroline=False),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)"),
-)
-st.plotly_chart(fig, width="stretch")
+# cats = gap_df["category"].tolist()
+# fig = go.Figure()
+# for brand, col in [("Our Store", "our_discount"), ("Forever New", "fn_discount"), ("Vero Moda", "vm_discount")]:
+#     fig.add_trace(go.Bar(
+#         name=brand, x=cats, y=gap_df[col],
+#         marker_color=BRAND_COLORS[brand], marker_line_width=0, opacity=0.85,
+#     ))
+# fig.update_layout(
+#     **PLOT_LAYOUT, barmode="group", height=400, bargap=0.2, bargroupgap=0.05,
+#     xaxis=dict(tickangle=-30, gridcolor=GRID_COLOR, linecolor=GRID_COLOR),
+#     yaxis=dict(title="Avg Discount (%)", gridcolor=GRID_COLOR, ticksuffix="%", zeroline=False),
+#     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)"),
+# )
+# st.plotly_chart(fig, width="stretch")
 
 # ── Category Deep Dive ─────────────────────────────────────────────
 st.markdown("<hr>", unsafe_allow_html=True)
