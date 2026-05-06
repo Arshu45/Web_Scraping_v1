@@ -31,6 +31,28 @@
           "enabled": true
         }
       ]
+    },
+    {
+      "name": "forevernew_products",
+      "enabled": true,
+      "brands": [
+        {
+          "name": "Forever New",
+          "url": "https://www.forevernew.co.in",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "veromoda_products",
+      "enabled": true,
+      "brands": [
+        {
+          "name": "Vero Moda",
+          "url": "https://www.veromoda.in",
+          "enabled": true
+        }
+      ]
     }
   ]
 }
