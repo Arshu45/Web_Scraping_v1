@@ -7,22 +7,22 @@ A production-grade, end-to-end retail competitive intelligence system built on a
 ## Architecture & Data Flow
 
 ```text
-╔══════════════════════════════════════════════════════════════════╗
-║                        BRONZE LAYER                             ║
-║                    (Raw Ingestion Sources)                       ║
+╔══════════════════════════════════════════════ ════════════════════╗
+║                        BRONZE LAYER                               ║
+║                    (Raw Ingestion Sources)                        ║
 ╠══════════════════╦═══════════════════════╦════════════════════════╣
 ║  Aggregator      ║  Direct Catalog       ║  Internal Store        ║
 ║  Scraping        ║  Crawling             ║  Sync                  ║
 ║                  ║                       ║                        ║
-║  GrabOn          ║  Forever New          ║  MySQL (fashion_retail) ║
+║  GrabOn          ║  Forever New          ║ MySQL (fashion_retail) ║
 ║  CouponDunia     ║  Vero Moda            ║  ↓ orders + products   ║
 ║  (Scrapy)        ║  (Scrapy)             ║  (scripts/sync_own_    ║
 ║                  ║                       ║   store.py)            ║
 ╚══════════════════╩═══════════════════════╩════════════════════════╝
                               ↓
 ╔══════════════════════════════════════════════════════════════════╗
-║                        SILVER LAYER                             ║
-║               (PostgreSQL: promo_db_v3)                         ║
+║                        SILVER LAYER                              ║
+║               (PostgreSQL: promo_db_v3)                          ║
 ║                                                                  ║
 ║   promotions  ·  product_snapshots  ·  base_store_products       ║
 ║                          ↓                                       ║
@@ -31,7 +31,7 @@ A production-grade, end-to-end retail competitive intelligence system built on a
 ╚══════════════════════════════════════════════════════════════════╝
                               ↓
 ╔══════════════════════════════════════════════════════════════════╗
-║                         GOLD LAYER                              ║
+║                                                                  ║
 ║              Streamlit Dashboard + AI Analyst                    ║
 ╚══════════════════════════════════════════════════════════════════╝
 ```
