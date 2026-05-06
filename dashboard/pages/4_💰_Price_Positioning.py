@@ -23,65 +23,79 @@ BAND_COLORS = {
     "Luxury (>₹10K)":       "#C4892A",
 }
 
-# ── Donuts ─────────────────────────────────────────────────────────
+# ── Toggle ─────────────────────────────────────────────────────────
 section_label("Price Band Distribution by Brand")
 
-cols = st.columns(3)
-for idx, brand in enumerate(brands):
-    bdf = band_counts[band_counts["brand"] == brand]
-    bdf = bdf.set_index("price_band").reindex(band_order).fillna(0).reset_index()
-    total = int(bdf["count"].sum())
-    clrs  = [BAND_COLORS.get(b, "#CCC") for b in bdf["price_band"]]
-
-    fig = go.Figure(go.Pie(
-        labels=bdf["price_band"], values=bdf["count"],
-        hole=0.65, marker_colors=clrs,
-        marker=dict(line=dict(color="#FAFAFA", width=2)),
-        textinfo="percent", textfont=dict(size=11, color="#505060"),
-        hovertemplate="<b>%{label}</b><br>%{value:,} products (%{percent})<extra></extra>",
-    ))
-    fig.update_layout(
-        **PLOT_LAYOUT, height=280,
-        title=dict(
-            text=f"<b style='color:#1A1A2E;font-size:13px'>{brand}</b><br><span style='color:#A0A0B0;font-size:11px'>{total:,} products</span>",
-            x=0.5, xanchor="center",
-        ),
-        showlegend=False,
-        annotations=[dict(text=brand.split()[0], x=0.5, y=0.5, font=dict(size=13, color="#909098"), showarrow=False)],
+view_col, _ = st.columns([2, 5])
+with view_col:
+    view_mode = st.segmented_control(
+        "View",
+        options=["Donut", "Bar"],
+        default="Donut",
+        label_visibility="collapsed",
     )
-    with cols[idx]:
-        st.plotly_chart(fig, width="stretch")
 
-# ── Legend ─────────────────────────────────────────────────────────
+# Shared legend strip
 legend_html = " ".join([
     f"<span style='display:inline-flex;align-items:center;gap:6px;margin-right:20px;'>"
     f"<span style='width:8px;height:8px;border-radius:50%;background:{c};display:inline-block'></span>"
     f"<span style='font-size:0.78rem;color:#909098;'>{b}</span></span>"
     for b, c in BAND_COLORS.items()
 ])
-st.markdown(f"<div style='text-align:center;margin:-8px 0 24px 0'>{legend_html}</div>", unsafe_allow_html=True)
+st.markdown(f"<div style='margin-bottom:16px'>{legend_html}</div>", unsafe_allow_html=True)
 
-# ── Stacked Bar ────────────────────────────────────────────────────
-section_label("Price Band Comparison — All Brands")
+if view_mode == "Donut":
+    # ── Three donut charts ──────────────────────────────────────────
+    cols = st.columns(3)
+    for idx, brand in enumerate(brands):
+        bdf  = band_counts[band_counts["brand"] == brand]
+        bdf  = bdf.set_index("price_band").reindex(band_order).fillna(0).reset_index()
+        total = int(bdf["count"].sum())
+        clrs  = [BAND_COLORS.get(b, "#CCC") for b in bdf["price_band"]]
 
-fig2 = go.Figure()
-for band in band_order:
-    vals = [
-        int(band_counts[(band_counts["brand"] == brand) & (band_counts["price_band"] == band)]["count"].values[0])
-        if not band_counts[(band_counts["brand"] == brand) & (band_counts["price_band"] == band)].empty else 0
-        for brand in brands
-    ]
-    fig2.add_trace(go.Bar(
-        name=band, x=brands, y=vals,
-        marker_color=BAND_COLORS.get(band, "#CCC"), marker_line_width=0, opacity=0.88,
-        text=vals, textposition="inside", textfont=dict(size=10, color="#FFFFFF"),
-    ))
-fig2.update_layout(
-    **PLOT_LAYOUT, barmode="stack", height=360, bargap=0.35,
-    yaxis=dict(title="Number of Products", gridcolor=GRID_COLOR, zeroline=False),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, bgcolor="rgba(0,0,0,0)"),
-)
-st.plotly_chart(fig2, width="stretch")
+        fig = go.Figure(go.Pie(
+            labels=bdf["price_band"], values=bdf["count"],
+            hole=0.65, marker_colors=clrs,
+            marker=dict(line=dict(color="#FAFAFA", width=2)),
+            textinfo="percent", textfont=dict(size=11, color="#505060"),
+            hovertemplate="<b>%{label}</b><br>%{value:,} products (%{percent})<extra></extra>",
+        ))
+        fig.update_layout(
+            **PLOT_LAYOUT, height=300,
+            title=dict(
+                text=f"<b style='color:#1A1A2E;font-size:13px'>{brand}</b><br>"
+                     f"<span style='color:#A0A0B0;font-size:11px'>{total:,} products</span>",
+                x=0.5, xanchor="center",
+            ),
+            showlegend=False,
+            annotations=[dict(text=brand.split()[0], x=0.5, y=0.5,
+                              font=dict(size=13, color="#909098"), showarrow=False)],
+        )
+        with cols[idx]:
+            st.plotly_chart(fig, width="stretch")
+
+else:
+    # ── Stacked bar chart ───────────────────────────────────────────
+    fig2 = go.Figure()
+    for band in band_order:
+        vals = [
+            int(band_counts[(band_counts["brand"] == brand) & (band_counts["price_band"] == band)]["count"].values[0])
+            if not band_counts[(band_counts["brand"] == brand) & (band_counts["price_band"] == band)].empty else 0
+            for brand in brands
+        ]
+        fig2.add_trace(go.Bar(
+            name=band, x=brands, y=vals,
+            marker_color=BAND_COLORS.get(band, "#CCC"), marker_line_width=0, opacity=0.88,
+            text=vals, textposition="inside", textfont=dict(size=11, color="#FFFFFF"),
+        ))
+    fig2.update_layout(
+        **PLOT_LAYOUT, barmode="stack", height=400, bargap=0.35,
+        yaxis=dict(title="Number of Products", gridcolor=GRID_COLOR, zeroline=False),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
+                    bgcolor="rgba(0,0,0,0)"),
+    )
+    st.plotly_chart(fig2, width="stretch")
+
 
 # ── Observation callouts ───────────────────────────────────────────
 section_label("Key Observations")

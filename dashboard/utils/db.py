@@ -87,8 +87,9 @@ def get_gap_analysis():
         WITH ours AS (
             SELECT master_category,
                    ROUND(AVG(discount_percentage)::numeric, 2) as our_discount,
-                   ROUND(AVG(original_price)::numeric, 2) as our_avg_mrp,
-                   COUNT(*) as our_products
+                   ROUND(AVG(original_price)::numeric, 0) as our_avg_mrp,
+                   COUNT(*) as our_products,
+                   ROUND(100.0 * COUNT(CASE WHEN discount_percentage > 0 THEN 1 END) / COUNT(*)::numeric, 1) as our_pct_on_sale
             FROM base_store_products
             WHERE master_category NOT IN ({EXCL_SQL})
               AND discount_percentage IS NOT NULL
@@ -97,7 +98,8 @@ def get_gap_analysis():
         fn AS (
             SELECT ps.master_category,
                    ROUND(AVG(ps.discount_percentage)::numeric, 2) as fn_discount,
-                   ROUND(AVG(ps.original_price)::numeric, 2) as fn_avg_mrp
+                   ROUND(AVG(ps.original_price)::numeric, 0) as fn_avg_mrp,
+                   ROUND(100.0 * COUNT(CASE WHEN ps.is_on_sale THEN 1 END) / COUNT(*)::numeric, 1) as fn_pct_on_sale
             FROM product_snapshots ps
             JOIN competitors c ON ps.competitor_id = c.id
             WHERE c.name = 'Forever New'
@@ -108,7 +110,8 @@ def get_gap_analysis():
         vm AS (
             SELECT ps.master_category,
                    ROUND(AVG(ps.discount_percentage)::numeric, 2) as vm_discount,
-                   ROUND(AVG(ps.original_price)::numeric, 2) as vm_avg_mrp
+                   ROUND(AVG(ps.original_price)::numeric, 0) as vm_avg_mrp,
+                   ROUND(100.0 * COUNT(CASE WHEN ps.is_on_sale THEN 1 END) / COUNT(*)::numeric, 1) as vm_pct_on_sale
             FROM product_snapshots ps
             JOIN competitors c ON ps.competitor_id = c.id
             WHERE c.name = 'Vero Moda'
@@ -118,13 +121,13 @@ def get_gap_analysis():
         )
         SELECT
             o.master_category as category,
-            o.our_discount,
-            o.our_avg_mrp,
-            o.our_products,
+            o.our_discount,    o.our_avg_mrp,    o.our_products,    o.our_pct_on_sale,
             COALESCE(f.fn_discount, 0) as fn_discount,
             COALESCE(f.fn_avg_mrp, 0) as fn_avg_mrp,
+            COALESCE(f.fn_pct_on_sale, 0) as fn_pct_on_sale,
             COALESCE(v.vm_discount, 0) as vm_discount,
             COALESCE(v.vm_avg_mrp, 0) as vm_avg_mrp,
+            COALESCE(v.vm_pct_on_sale, 0) as vm_pct_on_sale,
             ROUND(GREATEST(
                 COALESCE(f.fn_discount, 0),
                 COALESCE(v.vm_discount, 0)
@@ -134,6 +137,81 @@ def get_gap_analysis():
         LEFT JOIN vm v ON o.master_category = v.master_category
         ORDER BY max_gap DESC
     """), session.bind)
+    session.close()
+    return df
+
+
+@st.cache_data(ttl=300)
+def get_gap_analysis_by_price_band(min_price: float, max_price: float):
+    """
+    Category-level gap analysis filtered to a specific price band.
+    Ensures we compare like-for-like (e.g. mid-range accessories vs mid-range accessories).
+    max_price of 0 means no upper cap.
+    """
+    session = get_session()
+    price_filter_our  = "AND original_price >= :min_p" + (" AND original_price < :max_p" if max_price else "")
+    price_filter_comp = "AND ps.original_price >= :min_p" + (" AND ps.original_price < :max_p" if max_price else "")
+    params = {"min_p": min_price}
+    if max_price:
+        params["max_p"] = max_price
+
+    df = pd.read_sql(text(f"""
+        WITH ours AS (
+            SELECT master_category,
+                   ROUND(AVG(discount_percentage)::numeric, 2) as our_discount,
+                   ROUND(AVG(original_price)::numeric, 0) as our_avg_mrp,
+                   COUNT(*) as our_products,
+                   ROUND(100.0 * COUNT(CASE WHEN discount_percentage > 0 THEN 1 END) / COUNT(*)::numeric, 1) as our_pct_on_sale
+            FROM base_store_products
+            WHERE master_category NOT IN ({EXCL_SQL})
+              AND discount_percentage IS NOT NULL
+              {price_filter_our}
+            GROUP BY master_category
+        ),
+        fn AS (
+            SELECT ps.master_category,
+                   ROUND(AVG(ps.discount_percentage)::numeric, 2) as fn_discount,
+                   ROUND(AVG(ps.original_price)::numeric, 0) as fn_avg_mrp,
+                   ROUND(100.0 * COUNT(CASE WHEN ps.is_on_sale THEN 1 END) / COUNT(*)::numeric, 1) as fn_pct_on_sale
+            FROM product_snapshots ps
+            JOIN competitors c ON ps.competitor_id = c.id
+            WHERE c.name = 'Forever New'
+              AND ps.master_category NOT IN ({EXCL_SQL})
+              AND ps.discount_percentage IS NOT NULL
+              {price_filter_comp}
+            GROUP BY ps.master_category
+        ),
+        vm AS (
+            SELECT ps.master_category,
+                   ROUND(AVG(ps.discount_percentage)::numeric, 2) as vm_discount,
+                   ROUND(AVG(ps.original_price)::numeric, 0) as vm_avg_mrp,
+                   ROUND(100.0 * COUNT(CASE WHEN ps.is_on_sale THEN 1 END) / COUNT(*)::numeric, 1) as vm_pct_on_sale
+            FROM product_snapshots ps
+            JOIN competitors c ON ps.competitor_id = c.id
+            WHERE c.name = 'Vero Moda'
+              AND ps.master_category NOT IN ({EXCL_SQL})
+              AND ps.discount_percentage IS NOT NULL
+              {price_filter_comp}
+            GROUP BY ps.master_category
+        )
+        SELECT
+            o.master_category as category,
+            o.our_discount,    o.our_avg_mrp,    o.our_products,    o.our_pct_on_sale,
+            COALESCE(f.fn_discount, 0) as fn_discount,
+            COALESCE(f.fn_avg_mrp, 0) as fn_avg_mrp,
+            COALESCE(f.fn_pct_on_sale, 0) as fn_pct_on_sale,
+            COALESCE(v.vm_discount, 0) as vm_discount,
+            COALESCE(v.vm_avg_mrp, 0) as vm_avg_mrp,
+            COALESCE(v.vm_pct_on_sale, 0) as vm_pct_on_sale,
+            ROUND(GREATEST(
+                COALESCE(f.fn_discount, 0),
+                COALESCE(v.vm_discount, 0)
+            ) - o.our_discount, 2) as max_gap
+        FROM ours o
+        LEFT JOIN fn f ON o.master_category = f.master_category
+        LEFT JOIN vm v ON o.master_category = v.master_category
+        ORDER BY max_gap DESC
+    """), session.bind, params=params)
     session.close()
     return df
 

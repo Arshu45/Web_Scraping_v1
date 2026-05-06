@@ -15,7 +15,7 @@ page_header("Competitor Battle", "Where are the biggest discount gaps? Where do 
 with st.spinner(""):
     gap_df = get_gap_analysis()
 
-# ── Gap Table ──────────────────────────────────────────────────────
+# ── Gap Table ──────────────────────────────────────────────────────────
 section_label("Category Discount Gap — Our Store vs Competitors")
 
 display_df = gap_df.copy()
@@ -33,25 +33,25 @@ st.markdown(
 )
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Bar chart ─────────────────────────────────────────────────────
-# section_label("Discount Gap Visual — Our Store vs Each Competitor")
+# ── Bar chart ──────────────────────────────────────────────────────────
+section_label("Discount Gap Visual — Our Store vs Each Competitor")
 
-# cats = gap_df["category"].tolist()
-# fig = go.Figure()
-# for brand, col in [("Our Store", "our_discount"), ("Forever New", "fn_discount"), ("Vero Moda", "vm_discount")]:
-#     fig.add_trace(go.Bar(
-#         name=brand, x=cats, y=gap_df[col],
-#         marker_color=BRAND_COLORS[brand], marker_line_width=0, opacity=0.85,
-#     ))
-# fig.update_layout(
-#     **PLOT_LAYOUT, barmode="group", height=400, bargap=0.2, bargroupgap=0.05,
-#     xaxis=dict(tickangle=-30, gridcolor=GRID_COLOR, linecolor=GRID_COLOR),
-#     yaxis=dict(title="Avg Discount (%)", gridcolor=GRID_COLOR, ticksuffix="%", zeroline=False),
-#     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)"),
-# )
-# st.plotly_chart(fig, width="stretch")
+cats = gap_df["category"].tolist()
+fig = go.Figure()
+for brand, col in [("Our Store", "our_discount"), ("Forever New", "fn_discount"), ("Vero Moda", "vm_discount")]:
+    fig.add_trace(go.Bar(
+        name=brand, x=cats, y=gap_df[col],
+        marker_color=BRAND_COLORS[brand], marker_line_width=0, opacity=0.85,
+    ))
+fig.update_layout(
+    **PLOT_LAYOUT, barmode="group", height=400, bargap=0.2, bargroupgap=0.05,
+    xaxis=dict(tickangle=-30, gridcolor=GRID_COLOR, linecolor=GRID_COLOR),
+    yaxis=dict(title="Avg Discount (%)", gridcolor=GRID_COLOR, ticksuffix="%", zeroline=False),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)"),
+)
+st.plotly_chart(fig, width="stretch")
 
-# ── Category Deep Dive ─────────────────────────────────────────────
+# ── Category Deep Dive ─────────────────────────────────────────────────
 st.markdown("<hr>", unsafe_allow_html=True)
 section_label("Category Deep Dive — Price Distribution")
 
@@ -92,11 +92,14 @@ if not price_df.empty:
         st.markdown("<br><br>", unsafe_allow_html=True)
         cat_row = gap_df[gap_df["category"] == sel_cat].iloc[0] if sel_cat in gap_df["category"].values else None
         if cat_row is not None:
-            st.metric("Our Store", f"{cat_row['our_discount']}%")
+            st.metric("Our Store",   f"{cat_row['our_discount']}%",
+                      help=f"Avg MRP ₹{int(cat_row['our_avg_mrp']):,} · {cat_row['our_pct_on_sale']}% on sale")
             st.metric("Forever New", f"{cat_row['fn_discount']}%",
                       delta=f"{round(float(cat_row['fn_discount'] - cat_row['our_discount']),1)}%",
-                      delta_color="inverse")
-            st.metric("Vero Moda", f"{cat_row['vm_discount']}%",
+                      delta_color="inverse",
+                      help=f"Avg MRP ₹{int(cat_row['fn_avg_mrp']):,} · {cat_row['fn_pct_on_sale']}% on sale")
+            st.metric("Vero Moda",   f"{cat_row['vm_discount']}%",
                       delta=f"{round(float(cat_row['vm_discount'] - cat_row['our_discount']),1)}%",
-                      delta_color="inverse")
+                      delta_color="inverse",
+                      help=f"Avg MRP ₹{int(cat_row['vm_avg_mrp']):,} · {cat_row['vm_pct_on_sale']}% on sale")
             st.markdown(f"<br>{gap_badge(float(cat_row['max_gap']))}", unsafe_allow_html=True)
