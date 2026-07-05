@@ -182,10 +182,30 @@ def enrich_all(batch_size: int = 200) -> dict:
 
 
 # ─────────────────────────────────────────────
+# Task: Scrape a SINGLE brand target (runs concurrently via .map)
+# ─────────────────────────────────────────────
+@task(name="Scrape Brand Target", retries=1, retry_delay_seconds=15)
+def scrape_brand_target(target: dict) -> dict:
+    """
+    Runs the hybrid extractor for ONE brand.
+    Prefect will run all mapped instances concurrently.
+    Each task owns its own DB session — safe for parallel execution.
+    """
+    logger = get_run_logger()
+    logger.info("[%s] Starting extraction...", target.get('brand', '?'))
+    from scripts.run_hybrid_promo_scraper import scrape_single_target
+    try:
+        return scrape_single_target(target)
+    except Exception as e:
+        logger.error("[%s] Task failed: %s", target.get('brand', '?'), e)
+        return {"brand": target.get("brand", "unknown"), "error": str(e)}
+
+
+# ─────────────────────────────────────────────
 # Task: Print the final checklist / report
 # ─────────────────────────────────────────────
 @task(name="Generate Summary Report")
-def generate_report(spider_results: list[dict], enrichment_summary: dict):
+def generate_report(spider_results: list[dict], hybrid_results: list[dict], enrichment_summary: dict):
     logger = get_run_logger()
 
     passed = [r for r in spider_results if r.get('success')]
@@ -205,20 +225,34 @@ def generate_report(spider_results: list[dict], enrichment_summary: dict):
         f"║  Total Spiders  : {len(spider_results):<27}║",
         f"║  ✅ Passed       : {len(passed):<27}║",
         f"║  ❌ Failed       : {len(failed):<27}║",
-        f"║  💡 Enriched    : {enrichment_summary.get('enriched', 0):<27}║",
+        f"║  💡 Enriched    : {enrichment_summary.get('promotions_enriched', 0):<27}║",
         f"║  🛒 Snapshots   : {cat_ins} new, {cat_upd} upd       ║",
         "╠══════════════════════════════════════════════╣",
-        "║  SPIDER CHECKLIST                            ║",
+        "║  HYBRID PROMO SCRAPER RESULTS                ║",
         "╠══════════════════════════════════════════════╣",
     ]
 
-    for r in spider_results:
-        icon    = "✅" if r.get('success') else "❌"
-        name    = r.get('spider', 'unknown')
-        run_id  = str(r.get('run_id', '-'))
-        scraped  = r.get('items_scraped', 0)
-        inserted = r.get('items_inserted', 0)
-        report_lines.append(f"║  {icon} {name:<14} (run #{run_id:<3}) | Scraped: {scraped:<4} | Inserted: {inserted:<4} ║")
+    for h in hybrid_results:
+        brand = h.get("brand", "Unknown")
+        if "error" in h:
+            report_lines.append(f"║  ❌ {brand:<14} | ERROR: {h['error'][:23]:<24} ║")
+        else:
+            offers = h.get("offers_extracted", 0)
+            stored = h.get("offers_stored", 0)
+            cost = h.get("estimated_cost_usd", 0.0)
+            report_lines.append(f"║  ✓ {brand:<14} | Offers: {offers:<3} | Stored: {stored:<3} | Cost: ${cost:<4} ║")
+
+    if spider_results:
+        report_lines.append("╠══════════════════════════════════════════════╣")
+        report_lines.append("║  SPIDER CHECKLIST                            ║")
+        report_lines.append("╠══════════════════════════════════════════════╣")
+        for r in spider_results:
+            icon    = "✅" if r.get('success') else "❌"
+            name    = r.get('spider', 'unknown')
+            run_id  = str(r.get('run_id', '-'))
+            scraped  = r.get('items_scraped', 0)
+            inserted = r.get('items_inserted', 0)
+            report_lines.append(f"║  {icon} {name:<14} (run #{run_id:<3}) | Scraped: {scraped:<4} | Inserted: {inserted:<4} ║")
 
     if failed:
         report_lines.append("╠══════════════════════════════════════════════╣")
@@ -245,29 +279,40 @@ def generate_report(spider_results: list[dict], enrichment_summary: dict):
 @flow(name="Master Promo Scraper Pipeline", log_prints=True)
 def master_pipeline(enrich_batch_size: int = 50):
     """
-    1. Discovers ALL enabled spiders from the DB (including forevernew_products) and runs them in parallel.
-    2. Runs GLiNER enrichment on new aggregator promotions.
-    3. Prints a full checklist summary report.
+    1. Discovers ALL enabled spiders from the DB and runs them in parallel.
+    2. Runs the hybrid promo scraper for ALL configured brands IN PARALLEL
+       — each brand is a separate Prefect task submitted concurrently via .map().
+    3. Runs GLiNER enrichment AFTER all scrapers complete.
+    4. Prints a full checklist summary report.
     """
     logger = get_run_logger()
     logger.info("🚀 Master pipeline starting...")
 
-    # Step 1: Discover all active spiders from DB (grabon, coupondunia, forevernew_products, ...)
+    # Step 1: Discover all active spiders from DB
     spider_names = get_active_spiders()
-
     if not spider_names:
         logger.warning("No active spiders found in DB.")
 
-    # Step 2: Run ALL spiders in parallel (aggregator + catalog crawlers)
+    # Step 2: Run ALL Scrapy spiders in parallel (subprocesses)
     spider_futures = run_spider_subprocess.map(spider_names) if spider_names else []
 
-    # Step 3: Wait for aggregator spiders, then run enrichment
-    # Note: forevernew_products writes directly to product_snapshots — no enrichment needed
-    enrichment_summary = enrich_all(enrich_batch_size, wait_for=spider_futures)
+    # Step 3: Load all brand targets and submit each as a SEPARATE parallel task
+    from scripts.run_hybrid_promo_scraper import load_targets
+    targets = load_targets()
+    logger.info("Submitting %d brand targets for concurrent extraction...", len(targets))
+    hybrid_futures = scrape_brand_target.map(targets)  # runs all brands in parallel
 
-    # Step 4: Collect results and print report
-    spider_results = [f.result() for f in spider_futures]
-    generate_report(spider_results, enrichment_summary)
+    # Step 4: Wait for ALL tasks (spiders + all brand scrapers) then enrich
+    all_futures = spider_futures + hybrid_futures
+    enrichment_summary = enrich_all(
+        enrich_batch_size,
+        wait_for=all_futures if all_futures else None,
+    )
+
+    # Step 5: Collect results and print report
+    spider_results = [f.result() for f in spider_futures] if spider_names else []
+    hybrid_results = [f.result() for f in hybrid_futures]
+    generate_report(spider_results, hybrid_results, enrichment_summary)
 
 
 if __name__ == "__main__":

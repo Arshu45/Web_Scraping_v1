@@ -37,12 +37,13 @@ class ScrapingSource(Base):
 
     id              = Column(Integer, primary_key=True, autoincrement=True)
     competitor_id   = Column(Integer, ForeignKey('competitors.id', ondelete='CASCADE'), nullable=False)
-    source_name     = Column(String(50), nullable=False)    # e.g., "coupondunia"
-    source_url      = Column(Text, unique=True, nullable=False)
-    spider_name     = Column(String(50), nullable=False)    # Maps to the Scrapy spider class
-    enabled         = Column(Boolean, default=True, nullable=False)
-    added_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
-    modified_at     = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    source_name      = Column(String(50), nullable=False)    # e.g., "coupondunia"
+    source_url       = Column(Text, unique=True, nullable=False)
+    spider_name      = Column(String(50), nullable=False)    # Maps to the Scrapy spider class
+    extraction_type  = Column(String(20), default='html', nullable=False)  # "html" | "image" | "js_text"
+    enabled          = Column(Boolean, default=True, nullable=False)
+    added_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
+    modified_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     competitor      = relationship("Competitor", back_populates="sources")
@@ -79,8 +80,9 @@ class Promotion(Base):
     valid_until     = Column(Date)          # Extracted date, NULL if not found
 
     # Source tracking
-    source_name     = Column(String(50), nullable=False)
-    source_url      = Column(Text)
+    source_name            = Column(String(50), nullable=False)
+    source_url             = Column(Text)
+    extraction_confidence  = Column(String(10))   # "high" | "medium" | "low" — set by Vision LLM
 
     # Deduplication fingerprint: SHA-256 of (source_name + competitor.name + offer_title)
     offer_hash      = Column(String(64), unique=True, nullable=False)
