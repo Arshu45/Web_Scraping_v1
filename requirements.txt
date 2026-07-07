@@ -15,3 +15,10 @@ prefect                  # Pipeline scheduling & monitoring
 
 # ── Utilities ──────────────────────────────────────
 python-dotenv            # Load .env for DB credentials
+httpx                    # HTTP client for downloading images
+
+# ── Image-Based Promo Scraper (new) ────────────────────────────────
+playwright               # Headless Chromium — bypasses JS virtual queues
+google-genai             # Gemini 2.0 Flash Vision API (new SDK, replaces google-generativeai)
+pillow                   # Image resizing before API upload
+tenacity                 # Exponential backoff for Gemini 429 rate-limit retries

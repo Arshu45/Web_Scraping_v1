@@ -1,0 +1,201 @@
+"""
+run_hybrid_promo_scraper.py
+===========================
+Entry point for the hybrid promotional scraper.
+
+Each brand/target is processed as a CONCURRENT Prefect task.
+All tasks are submitted in parallel and awaited together before
+the enrichment stage runs.
+
+Usage (standalone):
+    python scripts/run_hybrid_promo_scraper.py
+
+Usage (via Prefect flow):
+    from scripts.run_hybrid_promo_scraper import scrape_single_target, load_targets
+"""
+
+import hashlib
+import json
+import glob
+import logging
+import os
+import sys
+from datetime import datetime, timezone
+
+from dotenv import load_dotenv
+
+load_dotenv()
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from database.connection import get_session
+from database.models import Competitor, Promotion
+from promo_scraper.hybrid_promo_extractor import HybridPromoExtractor
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("hybrid_promo_scraper")
+
+
+# ── Load Target registry from config ──────────────────────────────────────────
+
+CONFIG_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "config",
+    "targets",
+)
+
+
+def load_targets() -> list[dict]:
+    """Scan config/targets/*.json and return all target configs."""
+    targets = []
+    for config_file in sorted(glob.glob(os.path.join(CONFIG_DIR, "*.json"))):
+        try:
+            with open(config_file, "r", encoding="utf-8") as f:
+                targets.append(json.load(f))
+        except Exception as e:
+            logger.error("Failed to load target config from %s: %s", config_file, e)
+    return targets
+
+
+# ── DB helpers ─────────────────────────────────────────────────────────────────
+
+def _make_offer_hash(source: str, brand: str, title: str) -> str:
+    raw = f"{source}|{brand}|{title}".lower().strip()
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _save_offer_items(offer_dicts: list[dict], session) -> tuple[int, int]:
+    """Upserts offer dicts into the promotions table. Returns (inserted, updated)."""
+    inserted = updated = 0
+
+    for item in offer_dicts:
+        brand_name = item["brand"]
+        competitor = session.query(Competitor).filter_by(name=brand_name).first()
+        if not competitor:
+            competitor = Competitor(name=brand_name, enabled=True)
+            session.add(competitor)
+            session.flush()
+            logger.info("Auto-created competitor '%s' in DB", brand_name)
+
+        offer_hash = _make_offer_hash(item["source"], brand_name, item["title"])
+        existing = session.query(Promotion).filter_by(offer_hash=offer_hash).first()
+
+        if existing:
+            existing.scraped_at = datetime.now(timezone.utc)
+            existing.extraction_confidence = item.get("confidence")
+            updated += 1
+        else:
+            promo = Promotion(
+                competitor_id         = competitor.id,
+                brand                 = brand_name,
+                offer_title           = item["title"],
+                raw_text              = item.get("raw_text"),
+                source_name           = item["source"],
+                source_url            = item.get("source_url"),
+                extraction_confidence = item.get("confidence"),
+                offer_hash            = offer_hash,
+                scraped_at            = datetime.now(timezone.utc),
+                created_at            = datetime.now(timezone.utc),
+            )
+            session.add(promo)
+            inserted += 1
+
+        try:
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.error("DB commit failed for '%s': %s", item["title"][:60], e)
+
+    return inserted, updated
+
+
+# ── Per-brand task (runs concurrently) ─────────────────────────────────────────
+
+def scrape_single_target(target: dict) -> dict:
+    """
+    Scrapes ONE brand target.
+    Each call opens its own DB session → safe to run in parallel threads.
+    Returns a summary dict for the Prefect report.
+    """
+    brand = target["brand"]
+    logger.info("=" * 60)
+    logger.info("Processing: %s", brand)
+    logger.info("=" * 60)
+
+    session = get_session()
+    try:
+        extractor = HybridPromoExtractor(target)
+        summary   = extractor.run()
+        items     = summary.pop("offer_items", [])
+
+        if items:
+            inserted, updated = _save_offer_items(items, session)
+            summary["offers_stored"] = inserted + updated
+            logger.info(
+                "%s — Inserted: %d  |  Updated: %d  |  Cost: $%.6f",
+                brand, inserted, updated, summary.get("estimated_cost_usd", 0.0),
+            )
+        else:
+            logger.warning("%s — No offers extracted", brand)
+            summary.setdefault("offers_stored", 0)
+
+        return summary
+
+    except EnvironmentError as e:
+        logger.critical(str(e))
+        raise
+    except Exception as e:
+        logger.error("Failed to process '%s': %s", brand, e, exc_info=True)
+        return {"brand": brand, "error": str(e)}
+    finally:
+        session.close()
+
+
+# ── Standalone runner (sequential, for direct CLI use) ─────────────────────────
+
+def run_hybrid_promo_scraper() -> list[dict]:
+    """
+    Runs all targets SEQUENTIALLY when called directly (python scripts/run_...).
+    For concurrent execution, use the Prefect flow in flows/master_pipeline.py.
+    """
+    targets = load_targets()
+    all_summaries = [scrape_single_target(t) for t in targets]
+    _print_summary(all_summaries)
+    return all_summaries
+
+
+def _print_summary(all_summaries: list[dict]) -> None:
+    logger.info("")
+    logger.info("━" * 60)
+    logger.info("HYBRID PROMO SCRAPER — COMPLETE")
+    logger.info("━" * 60)
+    total_offers = sum(s.get("offers_extracted", 0) for s in all_summaries)
+    total_stored = sum(s.get("offers_stored", 0)    for s in all_summaries)
+    total_cost   = sum(s.get("estimated_cost_usd", 0) for s in all_summaries)
+    total_calls  = sum(s.get("gemini_api_calls", 0) for s in all_summaries)
+
+    for s in all_summaries:
+        if "error" in s:
+            logger.info("  ✗ %-20s  ERROR: %s", s["brand"], s["error"])
+        else:
+            logger.info(
+                "  ✓ %-20s  images=%d  offers=%d  stored=%d  api_calls=%d  cost=$%.6f",
+                s["brand"],
+                s.get("images_processed", 0),
+                s.get("offers_extracted", 0),
+                s.get("offers_stored", 0),
+                s.get("gemini_api_calls", 0),
+                s.get("estimated_cost_usd", 0.0),
+            )
+
+    logger.info(
+        "  TOTAL  offers=%d  stored=%d  api_calls=%d  est_cost=$%.6f",
+        total_offers, total_stored, total_calls, total_cost,
+    )
+
+
+if __name__ == "__main__":
+    run_hybrid_promo_scraper()
