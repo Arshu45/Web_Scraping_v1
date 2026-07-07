@@ -1,38 +1,27 @@
-# Retail Market Intelligence Platform
+# Retail Competitive Intelligence Scraper
 
-A production-grade, end-to-end retail competitive intelligence system built on a **Medallion Architecture** (Bronze → Silver → Gold). The platform scrapes competitor pricing and promotional data, enriches it with AI-driven category classification, and surfaces actionable insights through a real-time Streamlit dashboard with an LLM-powered natural language analyst.
+A production-grade, concurrent hybrid competitive intelligence system. The platform scrapes promotional offers directly from competitor websites (such as Forever New, David Jones, and The Iconic) in parallel, handles deduplication, and stores them in PostgreSQL.
 
 ---
 
-## Architecture & Data Flow
+## System Architecture
 
 ```text
-╔══════════════════════════════════════════════ ════════════════════╗
-║                        BRONZE LAYER                               ║
-║                    (Raw Ingestion Sources)                        ║
-╠══════════════════╦═══════════════════════╦════════════════════════╣
-║  Aggregator      ║  Direct Catalog       ║  Internal Store        ║
-║  Scraping        ║  Crawling             ║  Sync                  ║
-║                  ║                       ║                        ║
-║  GrabOn          ║  Forever New          ║ MySQL (fashion_retail) ║
-║  CouponDunia     ║  Vero Moda            ║  ↓ orders + products   ║
-║  (Scrapy)        ║  (Scrapy)             ║  (scripts/sync_own_    ║
-║                  ║                       ║   store.py)            ║
-╚══════════════════╩═══════════════════════╩════════════════════════╝
-                              ↓
 ╔══════════════════════════════════════════════════════════════════╗
-║                        SILVER LAYER                              ║
-║               (PostgreSQL: promo_db_v3)                          ║
+║                        BRONZE LAYER                              ║
+║                (Dynamic Browser Scraping)                        ║
 ║                                                                  ║
-║   promotions  ·  product_snapshots  ·  base_store_products       ║
-║                          ↓                                       ║
-║          GLiNER AI Enrichment (zero-shot NER)                    ║
-║    Maps raw labels → Shared Taxonomy (Tops, Bottoms, etc.)       ║
+║   Parallel Playwright Headless Scraping via Target configs       ║
+║   (e.g., config/targets/forever_new.json, david_jones.json)       ║
+║   Downloads promotional banners & extracts text elements        ║
 ╚══════════════════════════════════════════════════════════════════╝
                               ↓
 ╔══════════════════════════════════════════════════════════════════╗
+║                        SILVER LAYER                              ║
+║                  (PostgreSQL Database)                           ║
 ║                                                                  ║
-║              Streamlit Dashboard + AI Analyst                    ║
+║   Deduplication using SHA-256 (source + competitor + title)      ║
+║   Stores raw promotions, brand name, source URL, and confidence   ║
 ╚══════════════════════════════════════════════════════════════════╝
 ```
 
@@ -40,62 +29,37 @@ A production-grade, end-to-end retail competitive intelligence system built on a
 
 ## Database Schema
 
-| Table | Purpose |
-|---|---|
-| `competitors` | Brands being tracked (Forever New, Vero Moda, …) |
-| `scraping_sources` | Aggregator configs and spider entry points |
-| `promotions` | Structured coupon/offer data from GrabOn & CouponDunia |
-| `product_snapshots` | SKU-level pricing scraped from competitor websites |
-| `base_store_products` | Internal store catalog synced from MySQL |
+The PostgreSQL database is streamlined to store only the essential promotional data:
 
-> Categories are not stored in a table. They are dynamically assigned via `CATEGORY_KEYWORDS` in `enrichment/gliner_extractor.py` using GLiNER zero-shot NER with priority-based tie-breaking.
+### `competitors` Table
+* `id` (Primary Key)
+* `name` (Unique brand/competitor name, e.g. "David Jones")
+* `enabled` (Boolean)
+* `added_at` (Timestamp)
+* `modified_at` (Timestamp)
+
+### `promotions` Table
+* `id` (Primary Key)
+* `competitor_id` (Foreign Key to competitors)
+* `brand` (Denormalized string name of the competitor site)
+* `offer_title` (Raw promotional headline/offer title)
+* `raw_text` (Full raw text extracted from elements or banners)
+* `source_name` (Name of the scraper/strategy, e.g. "text_scraper")
+* `source_url` (Exact page URL where the promo was scraped)
+* `extraction_confidence` (Confidence level "high" | "medium" | "low")
+* `offer_hash` (Unique SHA-256 fingerprint used for deduplication)
+* `scraped_at` (Timestamp of last scraping run)
+* `created_at` (Timestamp of insertion)
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
+| Component | Technology |
 |---|---|
-| Scraping / Crawling | Scrapy |
-| Silver DB | PostgreSQL + SQLAlchemy + Alembic |
-| Bronze DB | MySQL + PyMySQL |
-| AI Enrichment | GLiNER (zero-shot NER) |
-| AI Analyst | LangChain · LiteLLM · Groq (`llama-3.3-70b`) |
+| Browser Automation | Playwright (Python) |
+| Database | PostgreSQL + SQLAlchemy |
 | Orchestration | Prefect |
-| Dashboard | Streamlit |
-| Charts | Plotly |
-
----
-
-## Dashboard Pages
-
-The dashboard runs at `http://localhost:8502` via `streamlit run dashboard/app.py`.
-
-| Page | Description | Status |
-|---|---|---|
-| **Overview** | Top-line KPIs · Price-band-aware discount gap table · Volume heatmap | ✅ Active |
-| **Competitor Battle** | Category-level gap analysis · Box plot price distribution | ✅ Active |
-| **Price Positioning** | Price-band donut/bar toggle · Budget vs Premium breakdown | ✅ Active |
-| **AI Analyst** | Natural language → SQL → Insight (LangChain + LLM) | ✅ Active |
-| Category Analysis | Discount depth & scatter by category | 🔒 Disabled |
-| Promotions Intel | Coupon & promo offer explorer | 🔒 Disabled |
-
----
-
-## LLM Factory (`llm/`)
-
-The AI Analyst uses a factory pattern to support multiple LLM providers with automatic failover:
-
-```
-llm/
-├── factory.py        # Reads LLM_PROVIDER from .env, returns LangChain LLM wrapper
-├── groq_client.py    # ChatGroq wrapper (llama-3.3-70b-versatile)
-├── litellm_client.py # ChatOpenAI wrapper pointed at LiteLLM proxy
-└── base.py           # Shared interface
-```
-
-- **Primary**: Set `LLM_PROVIDER=groq` or `LLM_PROVIDER=litellm`
-- **Fallback**: Set `LLM_FALLBACK=litellm` — on a `429` rate-limit error the agent automatically rebuilds with the fallback provider and retries the query transparently
 
 ---
 
@@ -103,48 +67,26 @@ llm/
 
 ```
 .
-├── dashboard/
-│   ├── app.py                          # Landing page & sidebar
-│   ├── pages/
-│   │   ├── 1_🏠_Overview.py            # KPIs + price-band gap view
-│   │   ├── 2_⚔️_Competitor_Battle.py   # Gap table + deep-dive
-│   │   ├── 4_💰_Price_Positioning.py   # Donut/bar toggle
-│   │   └── 6_💬_AI_Analyst.py          # NL-to-SQL AI chat
-│   ├── pages_disabled/                 # Temporarily hidden pages
-│   └── utils/
-│       ├── db.py                       # All SQL queries (cached)
-│       └── styles.py                   # Design system (light theme)
+├── config/
+│   └── targets/
+│       ├── david_jones.json            # Target config for David Jones
+│       ├── forever_new.json            # Target config for Forever New
+│       └── the_iconic.json             # Target config for The Iconic
 ├── database/
-│   ├── models.py                       # SQLAlchemy ORM models
-│   ├── connection.py                   # DB session factory
-│   └── mysql_connector.py              # Internal store MySQL connector
-├── enrichment/
-│   ├── gliner_extractor.py             # GLiNER NER-based category mapping
-│   ├── llm_extractor.py                # LLM-based category fallback
-│   └── enricher.py                     # Orchestrates enrichment pipeline
+│   ├── connection.py                   # SQLAlchemy connection session factory
+│   └── models.py                       # Simplified SQLAlchemy Models
 ├── flows/
-│   ├── master_pipeline.py              # Prefect master flow (all spiders + enrichment)
-│   └── scraping_pipeline.py            # Prefect scraping sub-flow
-├── llm/
-│   ├── factory.py                      # LLM provider factory + fallback
-│   ├── groq_client.py                  # Groq LLM client
-│   └── litellm_client.py               # LiteLLM proxy client
+│   └── master_pipeline.py              # Prefect flow orchestrating parallel runs
 ├── promo_scraper/
-│   ├── spiders/
-│   │   ├── grabon.py                   # GrabOn aggregator spider
-│   │   ├── coupondunia.py              # CouponDunia aggregator spider
-│   │   ├── forevernew_products.py      # Forever New catalog spider
-│   │   └── veromoda_products.py        # Vero Moda catalog spider
-│   ├── pipelines.py                    # Scrapy item pipelines (dedup + save)
-│   └── settings.py                     # Scrapy settings
+│   ├── hybrid_promo_extractor.py       # Core browser/text extraction logic
+│   ├── items.py                        # Scrapy legacy items configuration
+│   └── pipelines.py                    # Scrapy legacy pipelines configuration
 ├── scripts/
-│   ├── reset_db.py                     # Wipe & recreate all tables
-│   ├── seed_db.py                      # Seed competitor & source config
-│   ├── sync_own_store.py               # Sync internal MySQL → PostgreSQL
-│   └── backfill_categories.py          # Re-run AI enrichment without re-scraping
-├── alembic/                            # DB migration history
-├── .streamlit/config.toml              # Streamlit light theme config
-└── .env                                # Secrets & provider config
+│   ├── init_db.py                      # Initialize database tables
+│   ├── reset_db.py                     # Clears database tables
+│   └── run_hybrid_promo_scraper.py     # Hybrid scraper runner script
+├── alembic/                            # DB migrations (optional)
+└── .env                                # Database and API key configuration
 ```
 
 ---
@@ -155,83 +97,35 @@ llm/
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+playwright install
 ```
 
 ### 2. Configure environment
+Create a `.env` file in the root directory:
 ```env
-# .env
-DATABASE_URL=postgresql://user:password@localhost:5432/promo_db_v3
-
-# Internal Store (MySQL)
-MYSQL_HOST=your_mysql_host
-MYSQL_PORT=3306
-MYSQL_USER=readonly_user
-MYSQL_PASSWORD=your_password
-MYSQL_DB=fashion_retail
-
-# LLM Provider (for AI Analyst)
-LLM_PROVIDER=groq                        # or: litellm
-LLM_FALLBACK=litellm                     # fallback on 429 rate-limit
-LLM_MODEL=llama-3.3-70b-versatile
-LLM_TEMPERATURE=0
-LLM_MAX_TOKENS=5000
-GROQ_API_KEY=your_groq_key
-
-# LiteLLM proxy (optional)
-LITELLM_API_KEY=your_key
-LITELLM_API_BASE=https://your-proxy/v1
+DATABASE_URL=postgresql://postgres:password@localhost:5432/promo_db_v3
+GEMINI_API_KEY=your_gemini_vision_api_key
 ```
 
-### 3. Set up the database
+### 3. Initialize the database
 ```bash
-python scripts/reset_db.py      # create tables
-python scripts/seed_db.py       # seed competitor config
+python scripts/init_db.py
 ```
 
-### 4. Run the full data pipeline
+### 4. Run the Pipeline
+To run all target scrapers in parallel via Prefect:
 ```bash
-# Option A — Prefect (orchestrated, with monitoring)
-prefect server start             # open http://localhost:4200
 python flows/master_pipeline.py
-
-# Option B — individual spiders (for testing)
-scrapy crawl forevernew_products
-scrapy crawl veromoda_products
-scrapy crawl grabon
-scrapy crawl coupondunia
 ```
 
-### 5. Sync internal store data
+To run a single target directly or test sequentially:
 ```bash
-python scripts/sync_own_store.py
+python scripts/run_hybrid_promo_scraper.py
 ```
 
-### 6. Launch the dashboard
+### 5. Launch the Dashboard
+To start the Streamlit web dashboard to filter and view promotions:
 ```bash
 streamlit run dashboard/app.py
-# → http://localhost:8502
 ```
 
----
-
-## Useful Commands
-
-| Task | Command |
-|---|---|
-| Re-run AI enrichment only (no re-scrape) | `python scripts/backfill_categories.py` |
-| Reset all data | `python scripts/reset_db.py` |
-| Re-seed competitor config | `python scripts/seed_db.py` |
-| Run a single spider | `scrapy crawl <spider_name>` |
-| Run full pipeline | `python flows/master_pipeline.py` |
-
----
-
-## Branches
-
-| Branch | Purpose |
-|---|---|
-| `main` | Stable baseline |
-| `develop` | Integration branch |
-| `final_output` | **Current production state** |
-| `Medallion_Architecture` | Architecture-level work |
-| `Database-CRUD-Setup` | DB schema setup work |
