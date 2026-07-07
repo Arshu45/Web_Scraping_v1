@@ -1,13 +1,18 @@
 {
   "brand": "The Iconic",
-  "source_url": "https://www.theiconic.com.au/sale/",
+  "source_url": "https://www.theiconic.com.au/",
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
     ".discover-more-content b",
     ".discover-more-content a",
     ".usp-container a",
-    "h1.catalog-title"
+    "h1.catalog-title",
+    "a[href*='new-customer']",
+    "a[href*='referafriend']",
+    "span[data-ng-show*='newsletter']",
+    ".c01240",
+    ".c01243"
   ],
   "screenshot_selectors": [
     "div.dm-sale",
@@ -21,7 +26,10 @@
     "[class*='editorial']",
     "[class*='Promo']",
     "[class*='promo']",
-    "[class*='Campaign']"
+    "[class*='Campaign']",
+    "div.c015",
+    "div.c01238",
+    "div.c01241"
   ],
   "min_image_width": 600,
   "min_image_height": 150,

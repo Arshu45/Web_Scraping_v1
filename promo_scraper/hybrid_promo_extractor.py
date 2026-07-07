@@ -150,6 +150,18 @@ class HybridPromoExtractor:
         else:
             logger.error("Unknown strategy '%s' — skipping", self.strategy)
 
+        # Deduplicate extracted offers within this run to ensure clean reporting
+        seen_keys = set()
+        deduped_items = []
+        for item in offer_items:
+            title_clean = (item.get("title") or "").strip()
+            item["title"] = title_clean
+            key = (item.get("source"), item.get("brand"), title_clean.lower())
+            if key not in seen_keys:
+                seen_keys.add(key)
+                deduped_items.append(item)
+        offer_items = deduped_items
+
         self._offers_extracted = len(offer_items)
         summary = {
             "brand":             self.brand,
