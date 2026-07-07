@@ -90,13 +90,11 @@ def _save_offer_items(offer_dicts: list[dict], session) -> tuple[int, int]:
         else:
             promo = Promotion(
                 competitor_id         = competitor.id,
+                brand                 = brand_name,
                 offer_title           = item["title"],
                 raw_text              = item.get("raw_text"),
                 source_name           = item["source"],
                 source_url            = item.get("source_url"),
-                category              = item.get("category"),
-                discount_min          = item.get("discount_min"),
-                discount_max          = item.get("discount_max"),
                 extraction_confidence = item.get("confidence"),
                 offer_hash            = offer_hash,
                 scraped_at            = datetime.now(timezone.utc),
@@ -137,8 +135,8 @@ def scrape_single_target(target: dict) -> dict:
             inserted, updated = _save_offer_items(items, session)
             summary["offers_stored"] = inserted + updated
             logger.info(
-                "%s — Inserted: %d  |  Updated: %d  |  Cost: $%s",
-                brand, inserted, updated, summary["estimated_cost_usd"],
+                "%s — Inserted: %d  |  Updated: %d  |  Cost: $%.6f",
+                brand, inserted, updated, summary.get("estimated_cost_usd", 0.0),
             )
         else:
             logger.warning("%s — No offers extracted", brand)
@@ -184,13 +182,13 @@ def _print_summary(all_summaries: list[dict]) -> None:
             logger.info("  ✗ %-20s  ERROR: %s", s["brand"], s["error"])
         else:
             logger.info(
-                "  ✓ %-20s  images=%d  offers=%d  stored=%d  api_calls=%d  cost=$%s",
+                "  ✓ %-20s  images=%d  offers=%d  stored=%d  api_calls=%d  cost=$%.6f",
                 s["brand"],
                 s.get("images_processed", 0),
                 s.get("offers_extracted", 0),
                 s.get("offers_stored", 0),
                 s.get("gemini_api_calls", 0),
-                s.get("estimated_cost_usd", 0),
+                s.get("estimated_cost_usd", 0.0),
             )
 
     logger.info(

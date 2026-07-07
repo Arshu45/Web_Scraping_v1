@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from datetime import datetime
 from io import BytesIO
@@ -43,6 +44,12 @@ from tenacity import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Global rate limiting for Gemini Vision calls (max 15 RPM under free tier)
+_gemini_lock = threading.Lock()
+_last_gemini_time = 0.0
+GEMINI_MIN_DELAY = 4.5  # Ensure at least 4.5s delay between requests
+
 
 
 # ── Gemini Vision prompt ────────────────────────────────────────────────────
@@ -496,17 +503,29 @@ class HybridPromoExtractor:
     # ═══════════════════════════════════════════════════════════════════════
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=16),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=2, min=5, max=70),
         retry=retry_if_exception_message(match=".*429.*|.*quota.*|.*exhausted.*"),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
     def _call_gemini(self, img_bytes: bytes, mime: str) -> str:
-        image_part = genai_types.Part.from_bytes(data=img_bytes, mime_type=mime)
-        response = self._client.models.generate_content(
-            model=self.GEMINI_MODEL, contents=[VISION_PROMPT, image_part]
-        )
+        global _last_gemini_time
+        
+        with _gemini_lock:
+            now = time.time()
+            elapsed = now - _last_gemini_time
+            if elapsed < GEMINI_MIN_DELAY:
+                sleep_time = GEMINI_MIN_DELAY - elapsed
+                logger.info(f"Rate limiting: sleeping {sleep_time:.2f}s before calling Gemini API...")
+                time.sleep(sleep_time)
+            
+            image_part = genai_types.Part.from_bytes(data=img_bytes, mime_type=mime)
+            response = self._client.models.generate_content(
+                model=self.GEMINI_MODEL, contents=[VISION_PROMPT, image_part]
+            )
+            _last_gemini_time = time.time()
+            
         self._gemini_api_calls += 1
         return response.text
 
