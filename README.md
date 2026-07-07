@@ -82,6 +82,7 @@ The PostgreSQL database is streamlined to store only the essential promotional d
 │   ├── items.py                        # Scrapy legacy items configuration
 │   └── pipelines.py                    # Scrapy legacy pipelines configuration
 ├── scripts/
+│   ├── init_db.py                      # Initialize database tables
 │   ├── reset_db.py                     # Clears database tables
 │   └── run_hybrid_promo_scraper.py     # Hybrid scraper runner script
 ├── alembic/                            # DB migrations (optional)
@@ -108,8 +109,7 @@ GEMINI_API_KEY=your_gemini_vision_api_key
 
 ### 3. Initialize the database
 ```bash
-# Drops/Recreates tables matching the simplified schema
-python -c "from database.connection import engine; from database.models import Base; Base.metadata.create_all(bind=engine)"
+python scripts/init_db.py
 ```
 
 ### 4. Run the Pipeline

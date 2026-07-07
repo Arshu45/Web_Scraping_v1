@@ -114,8 +114,15 @@ python scripts/run_hybrid_promo_scraper.py
 python flows/master_pipeline.py
 ```
 
+### Database Initialization
+To create tables on a fresh setup:
+```bash
+python scripts/init_db.py
+```
+
 ### Database Clean Up
 To wipe and reset promotions and competitor tables:
 ```bash
 python scripts/reset_db.py
 ```
+
