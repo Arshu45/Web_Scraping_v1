@@ -6,19 +6,21 @@ sqlalchemy
 psycopg2-binary          # PostgreSQL driver
 alembic                  # DB schema migrations
 
-# ── NLP Enrichment ─────────────────────────────────────
-gliner                   # Zero-shot Named Entity Recognition (local)
-groq                     # Groq LLM API client (cloud, fast inference)
-
 # ── Orchestration ──────────────────────────────────
 prefect                  # Pipeline scheduling & monitoring
 
+# ── Image-Based Promo Scraper ──────────────────────
+playwright               # Headless browser automation
+google-genai             # Gemini 2.0 Flash Vision API (new SDK)
+pillow                   # Image resizing before API upload
+tenacity                 # Exponential backoff for API retries
+
+# ── Dashboard (Streamlit) ──────────────────────────
+streamlit
+pandas
+plotly
+
 # ── Utilities ──────────────────────────────────────
-python-dotenv            # Load .env for DB credentials
+python-dotenv            # Load .env configuration
 httpx                    # HTTP client for downloading images
 
-# ── Image-Based Promo Scraper (new) ────────────────────────────────
-playwright               # Headless Chromium — bypasses JS virtual queues
-google-genai             # Gemini 2.0 Flash Vision API (new SDK, replaces google-generativeai)
-pillow                   # Image resizing before API upload
-tenacity                 # Exponential backoff for Gemini 429 rate-limit retries

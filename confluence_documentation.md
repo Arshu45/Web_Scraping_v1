@@ -126,3 +126,10 @@ To wipe and reset promotions and competitor tables:
 python scripts/reset_db.py
 ```
 
+### Launch the Dashboard
+To start the Streamlit web dashboard to filter and view promotions:
+```bash
+streamlit run dashboard/app.py
+```
+
+

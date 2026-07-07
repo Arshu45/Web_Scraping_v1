@@ -122,3 +122,10 @@ To run a single target directly or test sequentially:
 ```bash
 python scripts/run_hybrid_promo_scraper.py
 ```
+
+### 5. Launch the Dashboard
+To start the Streamlit web dashboard to filter and view promotions:
+```bash
+streamlit run dashboard/app.py
+```
+
