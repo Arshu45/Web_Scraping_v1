@@ -54,7 +54,11 @@ def load_targets() -> list[dict]:
     for config_file in sorted(glob.glob(os.path.join(CONFIG_DIR, "*.json"))):
         try:
             with open(config_file, "r", encoding="utf-8") as f:
-                targets.append(json.load(f))
+                cfg = json.load(f)
+                if cfg.get("enabled", True) is False:
+                    logger.info("Target brand '%s' is disabled in config (%s) — skipping", cfg.get("brand"), os.path.basename(config_file))
+                    continue
+                targets.append(cfg)
         except Exception as e:
             logger.error("Failed to load target config from %s: %s", config_file, e)
     return targets

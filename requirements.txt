@@ -12,6 +12,7 @@ prefect                  # Pipeline scheduling & monitoring
 # ── Image-Based Promo Scraper ──────────────────────
 playwright               # Headless browser automation
 google-genai             # Gemini 2.0 Flash Vision API (new SDK)
+litellm                  # Multi-provider LLM client for corporate paid gateways
 pillow                   # Image resizing before API upload
 tenacity                 # Exponential backoff for API retries
 

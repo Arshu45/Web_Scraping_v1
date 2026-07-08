@@ -96,7 +96,14 @@ class HybridPromoExtractor:
     def __init__(self, target_config: dict):
         self.cfg        = target_config
         self.brand      = target_config["brand"]
-        self.source_url = target_config["source_url"]
+        # Can be a single URL string or a list of URL strings
+        raw_url = target_config["source_url"]
+        if isinstance(raw_url, list):
+            self.source_urls = raw_url
+            self.source_url = raw_url[0] if raw_url else ""
+        else:
+            self.source_urls = [raw_url]
+            self.source_url = raw_url
         self.strategy   = target_config.get("extraction_strategy", "image")
 
         # Image filter thresholds
@@ -116,21 +123,39 @@ class HybridPromoExtractor:
         self._offers_extracted = 0
         self._gemini_api_calls = 0
 
-        # Init Gemini (only needed for screenshot / image strategies)
+        # Select client type (litellm or direct gemini)
+        self.use_litellm = bool(os.getenv("LITELLM_API_BASE"))
+        if self.use_litellm:
+            model_name = os.getenv("VISION_LLM_MODEL") or os.getenv("LLM_MODEL")
+            if not model_name:
+                raise EnvironmentError("VISION_LLM_MODEL or LLM_MODEL must be set in .env when using LiteLLM.")
+            if "/" not in model_name:
+                self.model = f"openai/{model_name}"
+            else:
+                self.model = model_name
+        else:
+            self.model = os.getenv("VISION_LLM_MODEL") or self.GEMINI_MODEL
+
+        # Init API client (only needed for screenshot / image strategies)
         if self.strategy in ("screenshot", "image", "hybrid"):
-            api_key = os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                raise EnvironmentError(
-                    "GEMINI_API_KEY is not set. Add it to .env.\n"
-                    "Free key: https://aistudio.google.com/app/apikey"
-                )
-            self._client = genai.Client(api_key=api_key)
+            if self.use_litellm:
+                import litellm
+                litellm.suppress_debug_info = True
+                self._client = litellm
+            else:
+                api_key = os.getenv("GEMINI_API_KEY")
+                if not api_key:
+                    raise EnvironmentError(
+                        "GEMINI_API_KEY is not set. Add it to .env.\n"
+                        "Free key: https://aistudio.google.com/app/apikey"
+                    )
+                self._client = genai.Client(api_key=api_key)
         else:
             self._client = None
 
         logger.info(
-            "HybridPromoExtractor ready: brand='%s', strategy='%s', model=%s",
-            self.brand, self.strategy, self.GEMINI_MODEL,
+            "HybridPromoExtractor ready: brand='%s', strategy='%s', model=%s (via %s)",
+            self.brand, self.strategy, self.model, "litellm" if self.use_litellm else "direct gemini",
         )
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -139,30 +164,37 @@ class HybridPromoExtractor:
 
     def run(self) -> dict[str, Any]:
         """Run the extraction pipeline. Returns a summary dict."""
-        logger.info("Starting extraction → %s [strategy=%s]", self.source_url, self.strategy)
+        all_offer_items: list[dict] = []
 
-        offer_items: list[dict] = []
+        for url in self.source_urls:
+            self.source_url = url
+            logger.info("Starting extraction → %s [strategy=%s]", self.source_url, self.strategy)
 
-        if self.strategy in ("text", "screenshot", "hybrid"):
-            offer_items = self._run_playwright_extraction()
-        elif self.strategy == "image":
-            offer_items = self._run_image()
-        else:
-            logger.error("Unknown strategy '%s' — skipping", self.strategy)
+            offer_items: list[dict] = []
+
+            if self.strategy in ("text", "screenshot", "hybrid"):
+                offer_items = self._run_playwright_extraction()
+            elif self.strategy == "image":
+                offer_items = self._run_image()
+            else:
+                logger.error("Unknown strategy '%s' — skipping", self.strategy)
+                continue
+
+            all_offer_items.extend(offer_items)
 
         # Deduplicate extracted offers within this run to ensure clean reporting
         seen_keys = set()
         deduped_items = []
-        for item in offer_items:
+        for item in all_offer_items:
             title_clean = (item.get("title") or "").strip()
             item["title"] = title_clean
             key = (item.get("source"), item.get("brand"), title_clean.lower())
             if key not in seen_keys:
                 seen_keys.add(key)
                 deduped_items.append(item)
-        offer_items = deduped_items
+        all_offer_items = deduped_items
 
-        self._offers_extracted = len(offer_items)
+        self._offers_extracted = len(all_offer_items)
         summary = {
             "brand":             self.brand,
             "strategy":          self.strategy,
@@ -173,7 +205,7 @@ class HybridPromoExtractor:
             "offers_stored":     0,
             "gemini_api_calls":  self._gemini_api_calls,
             "estimated_cost_usd": round(self._gemini_api_calls * self.COST_PER_IMAGE_USD, 6),
-            "offer_items":       offer_items,
+            "offer_items":       all_offer_items,
         }
         logger.info(
             "Done: %d offers from %d images processed | cost=$%s",
@@ -529,17 +561,51 @@ class HybridPromoExtractor:
             elapsed = now - _last_gemini_time
             if elapsed < GEMINI_MIN_DELAY:
                 sleep_time = GEMINI_MIN_DELAY - elapsed
-                logger.info(f"Rate limiting: sleeping {sleep_time:.2f}s before calling Gemini API...")
+                logger.info(f"Rate limiting: sleeping {sleep_time:.2f}s before calling API...")
                 time.sleep(sleep_time)
             
-            image_part = genai_types.Part.from_bytes(data=img_bytes, mime_type=mime)
-            response = self._client.models.generate_content(
-                model=self.GEMINI_MODEL, contents=[VISION_PROMPT, image_part]
-            )
+            if self.use_litellm:
+                import base64
+                base64_image = base64.b64encode(img_bytes).decode("utf-8")
+                
+                kwargs = {
+                    "model": self.model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": VISION_PROMPT},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{mime};base64,{base64_image}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "temperature": 0.0,
+                }
+                api_key = os.getenv("LITELLM_API_KEY")
+                api_base = os.getenv("LITELLM_API_BASE")
+                if api_key:
+                    kwargs["api_key"] = api_key
+                if api_base:
+                    kwargs["api_base"] = api_base
+                
+                response = self._client.completion(**kwargs)
+                reply = response.choices[0].message.content
+            else:
+                image_part = genai_types.Part.from_bytes(data=img_bytes, mime_type=mime)
+                response = self._client.models.generate_content(
+                    model=self.model, contents=[VISION_PROMPT, image_part]
+                )
+                reply = response.text
+                
             _last_gemini_time = time.time()
             
         self._gemini_api_calls += 1
-        return response.text
+        return reply
 
     def _vision_extract(self, img_bytes: bytes, mime: str, label: str) -> list[dict]:
         """Resize image, call Gemini, parse JSON. Returns list of offer dicts."""

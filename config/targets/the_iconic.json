@@ -1,6 +1,9 @@
 {
   "brand": "The Iconic",
-  "source_url": "https://www.theiconic.com.au/",
+  "source_url": [
+    "https://www.theiconic.com.au/men/",
+    "https://www.theiconic.com.au/kids/"
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

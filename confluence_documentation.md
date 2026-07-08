@@ -45,7 +45,8 @@ graph TD
 ### 3.1 Target Configuration File Structure
 Each site has a standalone, declarative configuration file inside `config/targets/` defining elements to target:
 - `brand`: Brand string representation.
-- `source_url`: URL of the promotion/sale landing page.
+- `source_url`: URL of the promotion/sale landing page. Can be a single string URL OR a list of multiple URL strings to scrape multiple paths of the same website.
+- `enabled`: Optional boolean (`true` | `false`) to temporarily enable or disable the scraper target. Defaults to `true` if not specified.
 - `extraction_strategy`: Hybrid parsing combining text and visual elements.
 - `text_selectors`: CSS selectors targeting banners, headers, and promo blocks.
 - `screenshot_selectors`: CSS selectors targeting elements containing visual offers (processed by Vision LLM).
