@@ -233,11 +233,6 @@ class HybridPromoExtractor:
                 "sec-ch-ua": '"Not-A.Brand";v="99", "Chromium";v="124", "Google Chrome";v="124"',
                 "sec-ch-ua-mobile": "?0",
                 "sec-ch-ua-platform": '"Windows"',
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "sec-fetch-user": "?1",
-                "upgrade-insecure-requests": "1"
             }
         )
         page = context.new_page()
@@ -264,6 +259,7 @@ class HybridPromoExtractor:
                 # 1. Text Extraction Strategy
                 if self.strategy in ("text", "hybrid"):
                     text_selectors = self.cfg.get("text_selectors", [])
+                    candidate_texts: list[str] = []
                     for selector in text_selectors:
                         try:
                             elements = page.query_selector_all(selector)
@@ -279,6 +275,12 @@ class HybridPromoExtractor:
                             text = re.sub(r"\s+", " ", text)
                             if not text or len(text) < 8 or text in seen_texts:
                                 continue
+
+                            # Skip leaked <style>/CSS content some themes render as
+                            # visible text (e.g. scoped block-width rules)
+                            if re.search(r"[.#]?[\w-]+\s*\{[^{}]*:[^{}]*\}", text):
+                                continue
+
                             seen_texts.add(text)
 
                             # Only keep text that looks promotional (percentage off, free shipping, etc.)
@@ -286,7 +288,21 @@ class HybridPromoExtractor:
                                 continue
 
                             logger.info("  TEXT  %-60s [%s]", text[:60], selector)
-                            offer_items.append(self._make_text_offer(text))
+                            candidate_texts.append(text)
+
+                    # Overlapping/nested selectors (e.g. a broad container matched
+                    # alongside its own child) can yield several near-duplicate
+                    # strings that are prefixes/substrings of one another — keep
+                    # only the longest version of each.
+                    candidate_texts.sort(key=len, reverse=True)
+                    kept_texts: list[str] = []
+                    for text in candidate_texts:
+                        if any(text in longer for longer in kept_texts):
+                            continue
+                        kept_texts.append(text)
+
+                    for text in kept_texts:
+                        offer_items.append(self._make_text_offer(text))
 
                 # 2. Screenshot/Vision Strategy
                 if self.strategy in ("screenshot", "hybrid"):
@@ -682,6 +698,14 @@ class HybridPromoExtractor:
         for offer in offers:
             text = (offer.get("promo_text") or "").strip()
             if not text:
+                continue
+
+            # Reject low-signal labels vision sometimes returns for generic
+            # category/nav tiles (e.g. bare "SALE") that carry no actual
+            # offer detail (%, $, or a concrete benefit like free shipping)
+            has_number = re.search(r"\d", text)
+            has_benefit = re.search(r"free\s+(delivery|shipping|gift)|buy\s+\d|\bBOGO\b", text, re.I)
+            if not has_number and not has_benefit:
                 continue
 
             def _f(v):
