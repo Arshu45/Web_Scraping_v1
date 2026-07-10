@@ -1,0 +1,28 @@
+{
+  "brand": "Shoe HQ",
+  "source_url": [
+    "https://www.shoehq.com.au/",
+    "https://www.shoehq.com.au/collections/sale"
+  ],
+  "spider": "image_promo",
+  "extraction_strategy": "hybrid",
+  "text_selectors": [],
+  "screenshot_selectors": [
+    ".collection_promo_banner",
+    ".hero_carousel_slide_background_desktop"
+  ],
+  "min_image_width": 400,
+  "min_image_height": 150,
+  "min_aspect_ratio": 1.2,
+  "exclude_url_patterns": [
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
+  ],
+  "request_delay_seconds": 4,
+  "scroll_depth": 3,
+  "enabled": false
+}

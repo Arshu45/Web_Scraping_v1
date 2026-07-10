@@ -127,7 +127,7 @@ if not filtered_df.empty:
             xaxis=dict(showgrid=True, gridcolor="#EBEBF2"),
             yaxis=dict(showgrid=False)
         )
-        st.plotly_chart(fig_brand, use_container_width=True)
+        st.plotly_chart(fig_brand, width="stretch")
         
     with viz_col2:
         st.markdown('<div class="section-label">Extraction Timeline</div>', unsafe_allow_html=True)
@@ -150,7 +150,7 @@ if not filtered_df.empty:
             xaxis=dict(showgrid=True, gridcolor="#EBEBF2"),
             yaxis=dict(showgrid=True, gridcolor="#EBEBF2")
         )
-        st.plotly_chart(fig_time, use_container_width=True)
+        st.plotly_chart(fig_time, width="stretch")
 
 st.markdown("<hr>", unsafe_allow_html=True)
 

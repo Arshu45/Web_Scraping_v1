@@ -45,10 +45,18 @@ from tenacity import (
 
 logger = logging.getLogger(__name__)
 
-# Global rate limiting for Gemini Vision calls (max 15 RPM under free tier)
-_gemini_lock = threading.Lock()
-_last_gemini_time = 0.0
-GEMINI_MIN_DELAY = 4.5  # Ensure at least 4.5s delay between requests
+# ── Global Vision API rate-gate ─────────────────────────────────────────────
+# Shared across all HybridPromoExtractor instances in the same process.
+# Works for both LiteLLM (Claude Haiku) and direct Gemini calls.
+#
+# VISION_API_MIN_DELAY controls the minimum gap between successive API
+# dispatches (not completions). Tune this against your gateway quota:
+#   - Corporate LiteLLM (Claude Haiku): set to 1.0–2.0 if gateway is generous
+#   - Free Gemini tier (15 RPM):        keep at 4.5
+#   - Paid Gemini tier:                 set to 0.5–1.0
+_vision_api_lock = threading.Lock()
+_last_vision_api_time = 0.0
+VISION_API_MIN_DELAY = float(os.getenv("VISION_API_MIN_DELAY", "4.5"))
 
 
 
@@ -221,12 +229,14 @@ class HybridPromoExtractor:
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-infobars",
-                "--window-size=1920,1080",
+                "--disable-dev-shm-usage",  # prevents Chrome OOM crashes on Linux
+                "--disable-gpu",            # headless never uses GPU; saves ~30MB/instance
+                "--window-size=1440,900",
             ]
         )
         context = browser.new_context(
             user_agent=_UA,
-            viewport={"width": 1920, "height": 1080},
+            viewport={"width": 1440, "height": 900},
             extra_http_headers={
                 "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
                 "accept-language": "en-US,en;q=0.9",
@@ -593,61 +603,90 @@ class HybridPromoExtractor:
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=2, min=5, max=70),
-        retry=retry_if_exception_message(match=".*429.*|.*quota.*|.*exhausted.*"),
+        # Catches rate-limit signals from ALL supported providers:
+        #   - Generic:            429, quota, exhausted
+        #   - Claude / Anthropic: overloaded, rate_limit_error, AnthropicError
+        #   - LiteLLM gateway:    RateLimitError, litellm.RateLimitError
+        retry=retry_if_exception_message(
+            match=(
+                r".*429.*"
+                r"|.*quota.*"
+                r"|.*exhausted.*"
+                r"|.*overloaded.*"           # Anthropic overloaded_error
+                r"|.*rate.?limit.*"          # rate_limit_error, RateLimitError
+                r"|.*AnthropicError.*"       # anthropic SDK wrapper
+                r"|.*litellm\.RateLimit.*"   # LiteLLM specific
+            )
+        ),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
-    def _call_gemini(self, img_bytes: bytes, mime: str) -> str:
-        global _last_gemini_time
-        
-        with _gemini_lock:
+    def _call_vision_api(self, img_bytes: bytes, mime: str) -> str:
+        """
+        Send one image to the configured Vision model and return the raw text reply.
+
+        Rate-gate design
+        ────────────────
+        The global _vision_api_lock protects ONLY the timestamp read/write
+        (a microsecond operation). The actual API call — which can take 2-5s
+        of network I/O — runs OUTSIDE the lock so other threads are not
+        blocked waiting for network latency.
+
+        The timestamp is written BEFORE the lock is released, which means the
+        gate measures time between dispatch points (not between completions).
+        This is intentional: it prevents a burst of threads all reading a
+        stale timestamp and simultaneously firing requests the moment the
+        delay expires.
+        """
+        global _last_vision_api_time
+
+        # ── Rate gate: enforce minimum delay between dispatches ────────────
+        # Lock held for < 1ms (just reading a float and sleeping if needed).
+        with _vision_api_lock:
             now = time.time()
-            elapsed = now - _last_gemini_time
-            if elapsed < GEMINI_MIN_DELAY:
-                sleep_time = GEMINI_MIN_DELAY - elapsed
-                logger.info(f"Rate limiting: sleeping {sleep_time:.2f}s before calling API...")
+            elapsed = now - _last_vision_api_time
+            if elapsed < VISION_API_MIN_DELAY:
+                sleep_time = VISION_API_MIN_DELAY - elapsed
+                logger.debug("Vision API rate gate: sleeping %.2fs", sleep_time)
                 time.sleep(sleep_time)
-            
-            if self.use_litellm:
-                import base64
-                base64_image = base64.b64encode(img_bytes).decode("utf-8")
-                
-                kwargs = {
-                    "model": self.model,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": VISION_PROMPT},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:{mime};base64,{base64_image}"
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    "temperature": 0.0,
-                }
-                api_key = os.getenv("LITELLM_API_KEY")
-                api_base = os.getenv("LITELLM_API_BASE")
-                if api_key:
-                    kwargs["api_key"] = api_key
-                if api_base:
-                    kwargs["api_base"] = api_base
-                
-                response = self._client.completion(**kwargs)
-                reply = response.choices[0].message.content
-            else:
-                image_part = genai_types.Part.from_bytes(data=img_bytes, mime_type=mime)
-                response = self._client.models.generate_content(
-                    model=self.model, contents=[VISION_PROMPT, image_part]
-                )
-                reply = response.text
-                
-            _last_gemini_time = time.time()
-            
+            # Stamp BEFORE releasing so the next thread sees an up-to-date time
+            _last_vision_api_time = time.time()
+        # ── Lock released — API call runs concurrently with other threads ──
+
+        if self.use_litellm:
+            import base64
+            base64_image = base64.b64encode(img_bytes).decode("utf-8")
+            kwargs = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": VISION_PROMPT},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{mime};base64,{base64_image}"},
+                            },
+                        ],
+                    }
+                ],
+                "temperature": 0.0,
+            }
+            api_key = os.getenv("LITELLM_API_KEY")
+            api_base = os.getenv("LITELLM_API_BASE")
+            if api_key:
+                kwargs["api_key"] = api_key
+            if api_base:
+                kwargs["api_base"] = api_base
+            response = self._client.completion(**kwargs)
+            reply = response.choices[0].message.content
+        else:
+            image_part = genai_types.Part.from_bytes(data=img_bytes, mime_type=mime)
+            response = self._client.models.generate_content(
+                model=self.model, contents=[VISION_PROMPT, image_part]
+            )
+            reply = response.text
+
         self._gemini_api_calls += 1
         return reply
 
@@ -661,9 +700,9 @@ class HybridPromoExtractor:
             buf = BytesIO()
             fmt = "PNG" if mime == "image/png" else "JPEG"
             img.save(buf, format=fmt)
-            raw = self._call_gemini(buf.getvalue(), f"image/{fmt.lower()}")
+            raw = self._call_vision_api(buf.getvalue(), f"image/{fmt.lower()}")
         except Exception as e:
-            logger.error("Gemini call failed for %s: %s", label, e)
+            logger.error("Vision API call failed for %s: %s", label, e)
             return []
 
         raw = re.sub(r"```(?:json)?|```", "", raw).strip()

@@ -72,7 +72,12 @@ def generate_report(hybrid_results: list[dict]):
 # Each brand target spins up its own Playwright Chromium instance. Submitting
 # all targets at once (unbounded .map()) launches that many browsers
 # simultaneously, which can exhaust system memory. Cap how many run at a time.
-MAX_CONCURRENT_BROWSERS = 3
+#
+# Override via .env:  MAX_CONCURRENT_BROWSERS=8
+# Rule of thumb:      (available_RAM_GB - 2) / 0.25
+#   e.g. 8 GB  RAM → 24 max  (8 is a safe conservative default)
+#        16 GB RAM → 56 max  (12–16 is a good balanced ceiling)
+MAX_CONCURRENT_BROWSERS = int(os.getenv("MAX_CONCURRENT_BROWSERS", "8"))
 
 
 @flow(name="Master Promo Scraper Pipeline", log_prints=True)

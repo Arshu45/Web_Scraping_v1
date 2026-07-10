@@ -1,27 +1,24 @@
-# ── Core Scraping ──────────────────────────────────
-scrapy
-
 # ── Database ───────────────────────────────────────
-sqlalchemy
-psycopg2-binary          # PostgreSQL driver
-alembic                  # DB schema migrations
+sqlalchemy==2.0.49
+psycopg2-binary==2.9.12        # PostgreSQL driver
+alembic==1.18.4                 # DB schema migrations
 
 # ── Orchestration ──────────────────────────────────
-prefect                  # Pipeline scheduling & monitoring
+prefect==3.6.27                 # Pipeline scheduling & monitoring
 
 # ── Image-Based Promo Scraper ──────────────────────
-playwright               # Headless browser automation
-google-genai             # Gemini 2.0 Flash Vision API (new SDK)
-litellm                  # Multi-provider LLM client for corporate paid gateways
-pillow                   # Image resizing before API upload
-tenacity                 # Exponential backoff for API retries
+playwright==1.58.0              # Headless browser automation
+google-genai==2.10.0            # Gemini 2.0 Flash Vision API (new SDK)
+litellm==1.83.14                  # Multi-provider LLM client for corporate paid gateways
+pillow==12.2.0                   # Image resizing before API upload
+tenacity==9.1.4                 # Exponential backoff for API retries
 
 # ── Dashboard (Streamlit) ──────────────────────────
-streamlit
-pandas
-plotly
+streamlit==1.57.0
+pandas==3.0.2
+plotly==6.7.0
 
 # ── Utilities ──────────────────────────────────────
-python-dotenv            # Load .env configuration
-httpx                    # HTTP client for downloading images
+python-dotenv==1.2.2           # Load .env configuration
+httpx==0.28.1                 # HTTP client for downloading images
 
