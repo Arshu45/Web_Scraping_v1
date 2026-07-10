@@ -277,52 +277,60 @@ class HybridPromoExtractor:
                         # copies of the same link) dedupe as one offer.
                         return re.sub(r"[^\w\s%$]", "", s).lower().strip()
 
-                    for selector in text_selectors:
-                        try:
-                            elements = page.query_selector_all(selector)
-                        except Exception:
-                            continue
-                        for el in elements:
+                    for frame in page.frames:
+                        for selector in text_selectors:
                             try:
-                                # Skip elements hidden via responsive
-                                # (mobile/desktop) breakpoint classes — Playwright's
-                                # inner_text() doesn't apply normal line-break-to-space
-                                # conversion on unlaid-out elements, so a hidden
-                                # duplicate can come back malformed (e.g. "GET30%"
-                                # instead of "GET 30%") and defeat dedup.
-                                if not el.is_visible():
-                                    continue
-                                text = el.inner_text().strip()
+                                elements = frame.query_selector_all(selector)
                             except Exception:
                                 continue
+                            for el in elements:
+                                try:
+                                    # Skip elements hidden via responsive
+                                    # (mobile/desktop) breakpoint classes — Playwright's
+                                    # inner_text() doesn't apply normal line-break-to-space
+                                    # conversion on unlaid-out elements, so a hidden
+                                    # duplicate can come back malformed (e.g. "GET30%"
+                                    # instead of "GET 30%") and defeat dedup.
+                                    if not el.is_visible():
+                                        # If it is a slider/announcement/promo element, extract using text_content()
+                                        cls_attr = el.get_attribute("class") or ""
+                                        parent_cls = frame.evaluate('(el) => el.parentElement ? el.parentElement.className : ""', el) or ""
+                                        is_announcement = any(k in (cls_attr + " " + parent_cls).lower() for k in ("announcement", "slider", "carousel", "promo", "banner"))
+                                        if not is_announcement:
+                                            continue
+                                        text = el.text_content().strip()
+                                    else:
+                                        text = el.inner_text().strip()
+                                except Exception:
+                                    continue
 
-                            # Deduplicate & filter noise
-                            text = re.sub(r"\s+", " ", text)
-                            if not text or len(text) < 8:
-                                continue
-                            norm = _norm(text)
-                            if not norm or norm in seen_norms:
-                                continue
+                                # Deduplicate & filter noise
+                                text = re.sub(r"\s+", " ", text)
+                                if not text or len(text) < 8:
+                                    continue
+                                norm = _norm(text)
+                                if not norm or norm in seen_norms:
+                                    continue
 
-                            # Skip leaked <style>/CSS content some themes render as
-                            # visible text (e.g. scoped block-width rules)
-                            if re.search(r"[.#]?[\w-]+\s*\{[^{}]*:[^{}]*\}", text):
-                                continue
+                                # Skip leaked <style>/CSS content some themes render as
+                                # visible text (e.g. scoped block-width rules)
+                                if re.search(r"[.#]?[\w-]+\s*\{[^{}]*:[^{}]*\}", text):
+                                    continue
 
-                            seen_norms.add(norm)
+                                seen_norms.add(norm)
 
-                            # Only keep text that looks promotional (percentage off, free
-                            # shipping, multibuy/price-threshold offers like "2 for $99",
-                            # "Jackets from $99", or "2 from AU$599", etc.)
-                            if not re.search(
-                                r"\d+\s*%|off|sale|deal|save|discount|extra|free\s+(delivery|shipping|gift)"
-                                r"|clearance|offer|\bfor\s+[A-Za-z]{0,3}\$\d|\bfrom\s+[A-Za-z]{0,3}\$\d",
-                                text, re.I,
-                            ):
-                                continue
+                                # Only keep text that looks promotional (percentage off, free
+                                # shipping, multibuy/price-threshold offers like "2 for $99",
+                                # "Jackets from $99", or "2 from AU$599", etc.)
+                                if not re.search(
+                                    r"\d+\s*%|off|sale|deal|save|discount|extra|free\s+(?:[a-zA-Z]+\s+)?(?:delivery|shipping|gift)"
+                                    r"|clearance|offer|\bfor\s+[A-Za-z]{0,3}\$\d|\bfrom\s+[A-Za-z]{0,3}\$\d",
+                                    text, re.I,
+                                ):
+                                    continue
 
-                            logger.info("  TEXT  %-60s [%s]", text[:60], selector)
-                            candidate_texts.append(text)
+                                logger.info("  TEXT  %-60s [%s]", text[:60], selector)
+                                candidate_texts.append(text)
 
                     # Overlapping/nested selectors (e.g. a broad container matched
                     # alongside its own child) can yield several near-duplicate
@@ -357,111 +365,112 @@ class HybridPromoExtractor:
                             "img"
                         ]
 
-                    for selector in screenshot_selectors:
-                        try:
-                            elements = page.query_selector_all(selector)
-                        except Exception:
-                            continue
-                        logger.debug("Selector '%s' → %d elements", selector, len(elements))
-
-                        for el in elements:
-                            # Handle IMG tags (both visible and hidden)
-                            is_img = False
-                            img_src = ""
+                    for frame in page.frames:
+                        for selector in screenshot_selectors:
                             try:
-                                if el.evaluate("el => el.tagName") == "IMG":
-                                    is_img = True
-                                    img_src = el.get_attribute("src") or el.get_attribute("data-src") or ""
-                                    if img_src.startswith("//"):
-                                        img_src = "https:" + img_src
-                                    elif img_src.startswith("/"):
-                                        from urllib.parse import urlparse
-                                        parsed = urlparse(self.source_url)
-                                        img_src = f"{parsed.scheme}://{parsed.netloc}{img_src}"
+                                elements = frame.query_selector_all(selector)
                             except Exception:
-                                pass
+                                continue
+                            logger.debug("Selector '%s' → %d elements", selector, len(elements))
 
-                            if is_img and img_src:
-                                if any(p in img_src.lower() for p in self.exclude_patterns):
-                                    continue
+                            for el in elements:
+                                # Handle IMG tags (both visible and hidden)
+                                is_img = False
+                                img_src = ""
+                                try:
+                                    if el.evaluate("el => el.tagName") == "IMG":
+                                        is_img = True
+                                        img_src = el.get_attribute("src") or el.get_attribute("data-src") or ""
+                                        if img_src.startswith("//"):
+                                            img_src = "https:" + img_src
+                                        elif img_src.startswith("/"):
+                                            from urllib.parse import urlparse
+                                            parsed = urlparse(self.source_url)
+                                            img_src = f"{parsed.scheme}://{parsed.netloc}{img_src}"
+                                except Exception:
+                                    pass
 
-                            # Visibility check
-                            box = None
-                            try:
-                                box = el.bounding_box()
-                            except Exception:
-                                pass
+                                if is_img and img_src:
+                                    if any(p in img_src.lower() for p in self.exclude_patterns):
+                                        continue
 
-                            ss_bytes = None
-                            if is_img and img_src:
-                                # For IMG tags, if visible we can screenshot; if hidden we fetch bytes directly
-                                if box and box['width'] >= 100 and box['height'] >= 50:
+                                # Visibility check
+                                box = None
+                                try:
+                                    box = el.bounding_box()
+                                except Exception:
+                                    pass
+
+                                ss_bytes = None
+                                if is_img and img_src:
+                                    # For IMG tags, if visible we can screenshot; if hidden we fetch bytes directly
+                                    if box and box['width'] >= 100 and box['height'] >= 50:
+                                        try:
+                                            ss_bytes = el.screenshot()
+                                        except Exception:
+                                            pass
+                                    
+                                    # If screenshot failed or element is hidden, fetch via frame API to bypass CORS/403
+                                    if not ss_bytes:
+                                        try:
+                                            logger.info("Fetching hidden/uncaptured image bytes for: %s", img_src[:80])
+                                            image_b64 = frame.evaluate("""async (url) => {
+                                                const response = await fetch(url);
+                                                const blob = await response.blob();
+                                                return new Promise((resolve, reject) => {
+                                                    const reader = new FileReader();
+                                                    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                                                    reader.onerror = reject;
+                                                    reader.readAsDataURL(blob);
+                                                });
+                                            }""", img_src)
+                                            import base64
+                                            ss_bytes = base64.b64decode(image_b64)
+                                        except Exception as e:
+                                            logger.debug("Failed to fetch image bytes via frame fetch: %s", e)
+                                            continue
+                                else:
+                                    # For non-img elements (containers, divs), they MUST be visible
+                                    if not box or box['width'] < 100 or box['height'] < 50:
+                                        continue
                                     try:
                                         ss_bytes = el.screenshot()
                                     except Exception:
-                                        pass
-                                
-                                # If screenshot failed or element is hidden, fetch via browser API to bypass CORS/403
-                                if not ss_bytes:
-                                    try:
-                                        logger.info("Fetching hidden/uncaptured image bytes for: %s", img_src[:80])
-                                        image_b64 = page.evaluate("""async (url) => {
-                                            const response = await fetch(url);
-                                            const blob = await response.blob();
-                                            return new Promise((resolve, reject) => {
-                                                const reader = new FileReader();
-                                                reader.onloadend = () => resolve(reader.result.split(',')[1]);
-                                                reader.onerror = reject;
-                                                reader.readAsDataURL(blob);
-                                            });
-                                        }""", img_src)
-                                        import base64
-                                        ss_bytes = base64.b64decode(image_b64)
-                                    except Exception as e:
-                                        logger.debug("Failed to fetch image bytes via browser fetch: %s", e)
                                         continue
-                            else:
-                                # For non-img elements (containers, divs), they MUST be visible
-                                if not box or box['width'] < 100 or box['height'] < 50:
+
+                                if not ss_bytes:
                                     continue
+
+                                # Deduplicate identical screenshots
+                                ss_hash = hashlib.sha256(ss_bytes).hexdigest()
+                                if ss_hash in seen_hashes:
+                                    continue
+                                seen_hashes.add(ss_hash)
+
+                                # Check dimensions
                                 try:
-                                    ss_bytes = el.screenshot()
+                                    img = Image.open(BytesIO(ss_bytes))
+                                    if img.width < self.min_width or img.height < self.min_height:
+                                        continue
+                                    if img.width > 0 and (img.width / max(img.height, 1)) < self.min_aspect:
+                                        continue
                                 except Exception:
                                     continue
 
-                            if not ss_bytes:
-                                continue
+                                self._images_found += 1
+                                label = f"screenshot:{selector}"
 
-                            # Deduplicate identical screenshots
-                            ss_hash = hashlib.md5(ss_bytes).hexdigest()
-                            if ss_hash in seen_hashes:
-                                continue
-                            seen_hashes.add(ss_hash)
+                                if self._gemini_api_calls > 0:
+                                    time.sleep(self.delay)
 
-                            # Check dimensions
-                            try:
-                                img = Image.open(BytesIO(ss_bytes))
-                                if img.width < self.min_width or img.height < self.min_height:
-                                    continue
-                                if img.width > 0 and (img.width / max(img.height, 1)) < self.min_aspect:
-                                    continue
-                            except Exception:
-                                continue
-
-                            self._images_found += 1
-                            label = f"screenshot:{selector}"
-
-                            if self._gemini_api_calls > 0:
-                                time.sleep(self.delay)
-
-                            offers = self._vision_extract(ss_bytes, "image/png", label)
-                            if offers:
-                                items = self._build_offer_items(offers, label)
-                                offer_items.extend(items)
-                                self._images_processed += 1
-                                logger.info("  SHOT  %d offers from selector '%s'", len(items), selector)
-                            else:
-                                self._images_skipped += 1
+                                offers = self._vision_extract(ss_bytes, "image/png", label)
+                                if offers:
+                                    items = self._build_offer_items(offers, label)
+                                    offer_items.extend(items)
+                                    self._images_processed += 1
+                                    logger.info("  SHOT  %d offers from selector '%s'", len(items), selector)
+                                else:
+                                    self._images_skipped += 1
 
             except PWTimeout:
                 logger.error("Playwright timed out loading %s", self.source_url)
