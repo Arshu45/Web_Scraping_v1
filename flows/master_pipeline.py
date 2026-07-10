@@ -69,25 +69,37 @@ def generate_report(hybrid_results: list[dict]):
 # ─────────────────────────────────────────────
 # THE MASTER FLOW
 # ─────────────────────────────────────────────
+# Each brand target spins up its own Playwright Chromium instance. Submitting
+# all targets at once (unbounded .map()) launches that many browsers
+# simultaneously, which can exhaust system memory. Cap how many run at a time.
+MAX_CONCURRENT_BROWSERS = 3
+
+
 @flow(name="Master Promo Scraper Pipeline", log_prints=True)
 def master_pipeline():
     """
     1. Loads all brand targets from config/targets/*.json.
-    2. Runs the hybrid promo scraper for ALL configured brands IN PARALLEL
-       — each brand is a separate Prefect task submitted concurrently via .map().
+    2. Runs the hybrid promo scraper for all configured brands, batching
+       concurrent extraction so at most MAX_CONCURRENT_BROWSERS browsers
+       are open at once.
     3. Prints a full checklist summary report.
     """
     logger = get_run_logger()
     logger.info("🚀 Master pipeline starting...")
 
-    # Step 1: Load all brand targets and submit each as a SEPARATE parallel task
     from scripts.run_hybrid_promo_scraper import load_targets
     targets = load_targets()
-    logger.info("Submitting %d brand targets for concurrent extraction...", len(targets))
-    hybrid_futures = scrape_brand_target.map(targets)  # runs all brands in parallel
+    logger.info(
+        "Running %d brand targets, %d at a time...",
+        len(targets), MAX_CONCURRENT_BROWSERS,
+    )
 
-    # Step 2: Collect results and print report
-    hybrid_results = [f.result() for f in hybrid_futures]
+    hybrid_results = []
+    for i in range(0, len(targets), MAX_CONCURRENT_BROWSERS):
+        batch = targets[i:i + MAX_CONCURRENT_BROWSERS]
+        batch_futures = scrape_brand_target.map(batch)
+        hybrid_results.extend(f.result() for f in batch_futures)
+
     generate_report(hybrid_results)
 
 

@@ -247,7 +247,6 @@ class HybridPromoExtractor:
         from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
         offer_items: list[dict] = []
-        seen_texts: set[str] = set()
         seen_hashes: set[str] = set()
 
         with sync_playwright() as pw:
@@ -260,6 +259,14 @@ class HybridPromoExtractor:
                 if self.strategy in ("text", "hybrid"):
                     text_selectors = self.cfg.get("text_selectors", [])
                     candidate_texts: list[str] = []
+                    seen_norms: set[str] = set()
+
+                    def _norm(s: str) -> str:
+                        # Strip punctuation/separators so "Buy 2, Get 30% Off"
+                        # and "Buy 2 Get 30% Off" (desktop vs. mobile-nav
+                        # copies of the same link) dedupe as one offer.
+                        return re.sub(r"[^\w\s%$]", "", s).lower().strip()
+
                     for selector in text_selectors:
                         try:
                             elements = page.query_selector_all(selector)
@@ -267,13 +274,24 @@ class HybridPromoExtractor:
                             continue
                         for el in elements:
                             try:
+                                # Skip elements hidden via responsive
+                                # (mobile/desktop) breakpoint classes — Playwright's
+                                # inner_text() doesn't apply normal line-break-to-space
+                                # conversion on unlaid-out elements, so a hidden
+                                # duplicate can come back malformed (e.g. "GET30%"
+                                # instead of "GET 30%") and defeat dedup.
+                                if not el.is_visible():
+                                    continue
                                 text = el.inner_text().strip()
                             except Exception:
                                 continue
 
                             # Deduplicate & filter noise
                             text = re.sub(r"\s+", " ", text)
-                            if not text or len(text) < 8 or text in seen_texts:
+                            if not text or len(text) < 8:
+                                continue
+                            norm = _norm(text)
+                            if not norm or norm in seen_norms:
                                 continue
 
                             # Skip leaked <style>/CSS content some themes render as
@@ -281,10 +299,16 @@ class HybridPromoExtractor:
                             if re.search(r"[.#]?[\w-]+\s*\{[^{}]*:[^{}]*\}", text):
                                 continue
 
-                            seen_texts.add(text)
+                            seen_norms.add(norm)
 
-                            # Only keep text that looks promotional (percentage off, free shipping, etc.)
-                            if not re.search(r"\d+\s*%|off|sale|deal|save|discount|extra|free\s+(delivery|shipping|gift)|clearance|offer", text, re.I):
+                            # Only keep text that looks promotional (percentage off, free
+                            # shipping, multibuy/price-threshold offers like "2 for $99",
+                            # "Jackets from $99", or "2 from AU$599", etc.)
+                            if not re.search(
+                                r"\d+\s*%|off|sale|deal|save|discount|extra|free\s+(delivery|shipping|gift)"
+                                r"|clearance|offer|\bfor\s+[A-Za-z]{0,3}\$\d|\bfrom\s+[A-Za-z]{0,3}\$\d",
+                                text, re.I,
+                            ):
                                 continue
 
                             logger.info("  TEXT  %-60s [%s]", text[:60], selector)
@@ -293,13 +317,17 @@ class HybridPromoExtractor:
                     # Overlapping/nested selectors (e.g. a broad container matched
                     # alongside its own child) can yield several near-duplicate
                     # strings that are prefixes/substrings of one another — keep
-                    # only the longest version of each.
+                    # only the longest version of each (compared on normalized form
+                    # so punctuation differences don't defeat the check).
                     candidate_texts.sort(key=len, reverse=True)
                     kept_texts: list[str] = []
+                    kept_norms: list[str] = []
                     for text in candidate_texts:
-                        if any(text in longer for longer in kept_texts):
+                        norm = _norm(text)
+                        if any(norm in longer_norm for longer_norm in kept_norms):
                             continue
                         kept_texts.append(text)
+                        kept_norms.append(norm)
 
                     for text in kept_texts:
                         offer_items.append(self._make_text_offer(text))
