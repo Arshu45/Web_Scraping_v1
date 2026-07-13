@@ -45,10 +45,18 @@ from tenacity import (
 
 logger = logging.getLogger(__name__)
 
-# Global rate limiting for Gemini Vision calls (max 15 RPM under free tier)
-_gemini_lock = threading.Lock()
-_last_gemini_time = 0.0
-GEMINI_MIN_DELAY = 4.5  # Ensure at least 4.5s delay between requests
+# ── Global Vision API rate-gate ─────────────────────────────────────────────
+# Shared across all HybridPromoExtractor instances in the same process.
+# Works for both LiteLLM (Claude Haiku) and direct Gemini calls.
+#
+# VISION_API_MIN_DELAY controls the minimum gap between successive API
+# dispatches (not completions). Tune this against your gateway quota:
+#   - Corporate LiteLLM (Claude Haiku): set to 1.0–2.0 if gateway is generous
+#   - Free Gemini tier (15 RPM):        keep at 4.5
+#   - Paid Gemini tier:                 set to 0.5–1.0
+_vision_api_lock = threading.Lock()
+_last_vision_api_time = 0.0
+VISION_API_MIN_DELAY = float(os.getenv("VISION_API_MIN_DELAY", "4.5"))
 
 
 
@@ -221,12 +229,14 @@ class HybridPromoExtractor:
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-infobars",
-                "--window-size=1920,1080",
+                "--disable-dev-shm-usage",  # prevents Chrome OOM crashes on Linux
+                "--disable-gpu",            # headless never uses GPU; saves ~30MB/instance
+                "--window-size=1440,900",
             ]
         )
         context = browser.new_context(
             user_agent=_UA,
-            viewport={"width": 1920, "height": 1080},
+            viewport={"width": 1440, "height": 900},
             extra_http_headers={
                 "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
                 "accept-language": "en-US,en;q=0.9",
@@ -267,52 +277,60 @@ class HybridPromoExtractor:
                         # copies of the same link) dedupe as one offer.
                         return re.sub(r"[^\w\s%$]", "", s).lower().strip()
 
-                    for selector in text_selectors:
-                        try:
-                            elements = page.query_selector_all(selector)
-                        except Exception:
-                            continue
-                        for el in elements:
+                    for frame in page.frames:
+                        for selector in text_selectors:
                             try:
-                                # Skip elements hidden via responsive
-                                # (mobile/desktop) breakpoint classes — Playwright's
-                                # inner_text() doesn't apply normal line-break-to-space
-                                # conversion on unlaid-out elements, so a hidden
-                                # duplicate can come back malformed (e.g. "GET30%"
-                                # instead of "GET 30%") and defeat dedup.
-                                if not el.is_visible():
-                                    continue
-                                text = el.inner_text().strip()
+                                elements = frame.query_selector_all(selector)
                             except Exception:
                                 continue
+                            for el in elements:
+                                try:
+                                    # Skip elements hidden via responsive
+                                    # (mobile/desktop) breakpoint classes — Playwright's
+                                    # inner_text() doesn't apply normal line-break-to-space
+                                    # conversion on unlaid-out elements, so a hidden
+                                    # duplicate can come back malformed (e.g. "GET30%"
+                                    # instead of "GET 30%") and defeat dedup.
+                                    if not el.is_visible():
+                                        # If it is a slider/announcement/promo element, extract using text_content()
+                                        cls_attr = el.get_attribute("class") or ""
+                                        parent_cls = frame.evaluate('(el) => el.parentElement ? el.parentElement.className : ""', el) or ""
+                                        is_announcement = any(k in (cls_attr + " " + parent_cls).lower() for k in ("announcement", "slider", "carousel", "promo", "banner"))
+                                        if not is_announcement:
+                                            continue
+                                        text = el.text_content().strip()
+                                    else:
+                                        text = el.inner_text().strip()
+                                except Exception:
+                                    continue
 
-                            # Deduplicate & filter noise
-                            text = re.sub(r"\s+", " ", text)
-                            if not text or len(text) < 8:
-                                continue
-                            norm = _norm(text)
-                            if not norm or norm in seen_norms:
-                                continue
+                                # Deduplicate & filter noise
+                                text = re.sub(r"\s+", " ", text)
+                                if not text or len(text) < 8:
+                                    continue
+                                norm = _norm(text)
+                                if not norm or norm in seen_norms:
+                                    continue
 
-                            # Skip leaked <style>/CSS content some themes render as
-                            # visible text (e.g. scoped block-width rules)
-                            if re.search(r"[.#]?[\w-]+\s*\{[^{}]*:[^{}]*\}", text):
-                                continue
+                                # Skip leaked <style>/CSS content some themes render as
+                                # visible text (e.g. scoped block-width rules)
+                                if re.search(r"[.#]?[\w-]+\s*\{[^{}]*:[^{}]*\}", text):
+                                    continue
 
-                            seen_norms.add(norm)
+                                seen_norms.add(norm)
 
-                            # Only keep text that looks promotional (percentage off, free
-                            # shipping, multibuy/price-threshold offers like "2 for $99",
-                            # "Jackets from $99", or "2 from AU$599", etc.)
-                            if not re.search(
-                                r"\d+\s*%|off|sale|deal|save|discount|extra|free\s+(delivery|shipping|gift)"
-                                r"|clearance|offer|\bfor\s+[A-Za-z]{0,3}\$\d|\bfrom\s+[A-Za-z]{0,3}\$\d",
-                                text, re.I,
-                            ):
-                                continue
+                                # Only keep text that looks promotional (percentage off, free
+                                # shipping, multibuy/price-threshold offers like "2 for $99",
+                                # "Jackets from $99", or "2 from AU$599", etc.)
+                                if not re.search(
+                                    r"\d+\s*%|off|sale|deal|save|discount|extra|free\s+(?:[a-zA-Z]+\s+)?(?:delivery|shipping|gift)"
+                                    r"|clearance|offer|\bfor\s+[A-Za-z]{0,3}\$\d|\bfrom\s+[A-Za-z]{0,3}\$\d",
+                                    text, re.I,
+                                ):
+                                    continue
 
-                            logger.info("  TEXT  %-60s [%s]", text[:60], selector)
-                            candidate_texts.append(text)
+                                logger.info("  TEXT  %-60s [%s]", text[:60], selector)
+                                candidate_texts.append(text)
 
                     # Overlapping/nested selectors (e.g. a broad container matched
                     # alongside its own child) can yield several near-duplicate
@@ -347,111 +365,112 @@ class HybridPromoExtractor:
                             "img"
                         ]
 
-                    for selector in screenshot_selectors:
-                        try:
-                            elements = page.query_selector_all(selector)
-                        except Exception:
-                            continue
-                        logger.debug("Selector '%s' → %d elements", selector, len(elements))
-
-                        for el in elements:
-                            # Handle IMG tags (both visible and hidden)
-                            is_img = False
-                            img_src = ""
+                    for frame in page.frames:
+                        for selector in screenshot_selectors:
                             try:
-                                if el.evaluate("el => el.tagName") == "IMG":
-                                    is_img = True
-                                    img_src = el.get_attribute("src") or el.get_attribute("data-src") or ""
-                                    if img_src.startswith("//"):
-                                        img_src = "https:" + img_src
-                                    elif img_src.startswith("/"):
-                                        from urllib.parse import urlparse
-                                        parsed = urlparse(self.source_url)
-                                        img_src = f"{parsed.scheme}://{parsed.netloc}{img_src}"
+                                elements = frame.query_selector_all(selector)
                             except Exception:
-                                pass
+                                continue
+                            logger.debug("Selector '%s' → %d elements", selector, len(elements))
 
-                            if is_img and img_src:
-                                if any(p in img_src.lower() for p in self.exclude_patterns):
-                                    continue
+                            for el in elements:
+                                # Handle IMG tags (both visible and hidden)
+                                is_img = False
+                                img_src = ""
+                                try:
+                                    if el.evaluate("el => el.tagName") == "IMG":
+                                        is_img = True
+                                        img_src = el.get_attribute("src") or el.get_attribute("data-src") or ""
+                                        if img_src.startswith("//"):
+                                            img_src = "https:" + img_src
+                                        elif img_src.startswith("/"):
+                                            from urllib.parse import urlparse
+                                            parsed = urlparse(self.source_url)
+                                            img_src = f"{parsed.scheme}://{parsed.netloc}{img_src}"
+                                except Exception:
+                                    pass
 
-                            # Visibility check
-                            box = None
-                            try:
-                                box = el.bounding_box()
-                            except Exception:
-                                pass
+                                if is_img and img_src:
+                                    if any(p in img_src.lower() for p in self.exclude_patterns):
+                                        continue
 
-                            ss_bytes = None
-                            if is_img and img_src:
-                                # For IMG tags, if visible we can screenshot; if hidden we fetch bytes directly
-                                if box and box['width'] >= 100 and box['height'] >= 50:
+                                # Visibility check
+                                box = None
+                                try:
+                                    box = el.bounding_box()
+                                except Exception:
+                                    pass
+
+                                ss_bytes = None
+                                if is_img and img_src:
+                                    # For IMG tags, if visible we can screenshot; if hidden we fetch bytes directly
+                                    if box and box['width'] >= 100 and box['height'] >= 50:
+                                        try:
+                                            ss_bytes = el.screenshot()
+                                        except Exception:
+                                            pass
+                                    
+                                    # If screenshot failed or element is hidden, fetch via frame API to bypass CORS/403
+                                    if not ss_bytes:
+                                        try:
+                                            logger.info("Fetching hidden/uncaptured image bytes for: %s", img_src[:80])
+                                            image_b64 = frame.evaluate("""async (url) => {
+                                                const response = await fetch(url);
+                                                const blob = await response.blob();
+                                                return new Promise((resolve, reject) => {
+                                                    const reader = new FileReader();
+                                                    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                                                    reader.onerror = reject;
+                                                    reader.readAsDataURL(blob);
+                                                });
+                                            }""", img_src)
+                                            import base64
+                                            ss_bytes = base64.b64decode(image_b64)
+                                        except Exception as e:
+                                            logger.debug("Failed to fetch image bytes via frame fetch: %s", e)
+                                            continue
+                                else:
+                                    # For non-img elements (containers, divs), they MUST be visible
+                                    if not box or box['width'] < 100 or box['height'] < 50:
+                                        continue
                                     try:
                                         ss_bytes = el.screenshot()
                                     except Exception:
-                                        pass
-                                
-                                # If screenshot failed or element is hidden, fetch via browser API to bypass CORS/403
-                                if not ss_bytes:
-                                    try:
-                                        logger.info("Fetching hidden/uncaptured image bytes for: %s", img_src[:80])
-                                        image_b64 = page.evaluate("""async (url) => {
-                                            const response = await fetch(url);
-                                            const blob = await response.blob();
-                                            return new Promise((resolve, reject) => {
-                                                const reader = new FileReader();
-                                                reader.onloadend = () => resolve(reader.result.split(',')[1]);
-                                                reader.onerror = reject;
-                                                reader.readAsDataURL(blob);
-                                            });
-                                        }""", img_src)
-                                        import base64
-                                        ss_bytes = base64.b64decode(image_b64)
-                                    except Exception as e:
-                                        logger.debug("Failed to fetch image bytes via browser fetch: %s", e)
                                         continue
-                            else:
-                                # For non-img elements (containers, divs), they MUST be visible
-                                if not box or box['width'] < 100 or box['height'] < 50:
+
+                                if not ss_bytes:
                                     continue
+
+                                # Deduplicate identical screenshots
+                                ss_hash = hashlib.sha256(ss_bytes).hexdigest()
+                                if ss_hash in seen_hashes:
+                                    continue
+                                seen_hashes.add(ss_hash)
+
+                                # Check dimensions
                                 try:
-                                    ss_bytes = el.screenshot()
+                                    img = Image.open(BytesIO(ss_bytes))
+                                    if img.width < self.min_width or img.height < self.min_height:
+                                        continue
+                                    if img.width > 0 and (img.width / max(img.height, 1)) < self.min_aspect:
+                                        continue
                                 except Exception:
                                     continue
 
-                            if not ss_bytes:
-                                continue
+                                self._images_found += 1
+                                label = f"screenshot:{selector}"
 
-                            # Deduplicate identical screenshots
-                            ss_hash = hashlib.md5(ss_bytes).hexdigest()
-                            if ss_hash in seen_hashes:
-                                continue
-                            seen_hashes.add(ss_hash)
+                                if self._gemini_api_calls > 0:
+                                    time.sleep(self.delay)
 
-                            # Check dimensions
-                            try:
-                                img = Image.open(BytesIO(ss_bytes))
-                                if img.width < self.min_width or img.height < self.min_height:
-                                    continue
-                                if img.width > 0 and (img.width / max(img.height, 1)) < self.min_aspect:
-                                    continue
-                            except Exception:
-                                continue
-
-                            self._images_found += 1
-                            label = f"screenshot:{selector}"
-
-                            if self._gemini_api_calls > 0:
-                                time.sleep(self.delay)
-
-                            offers = self._vision_extract(ss_bytes, "image/png", label)
-                            if offers:
-                                items = self._build_offer_items(offers, label)
-                                offer_items.extend(items)
-                                self._images_processed += 1
-                                logger.info("  SHOT  %d offers from selector '%s'", len(items), selector)
-                            else:
-                                self._images_skipped += 1
+                                offers = self._vision_extract(ss_bytes, "image/png", label)
+                                if offers:
+                                    items = self._build_offer_items(offers, label)
+                                    offer_items.extend(items)
+                                    self._images_processed += 1
+                                    logger.info("  SHOT  %d offers from selector '%s'", len(items), selector)
+                                else:
+                                    self._images_skipped += 1
 
             except PWTimeout:
                 logger.error("Playwright timed out loading %s", self.source_url)
@@ -593,61 +612,90 @@ class HybridPromoExtractor:
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=2, min=5, max=70),
-        retry=retry_if_exception_message(match=".*429.*|.*quota.*|.*exhausted.*"),
+        # Catches rate-limit signals from ALL supported providers:
+        #   - Generic:            429, quota, exhausted
+        #   - Claude / Anthropic: overloaded, rate_limit_error, AnthropicError
+        #   - LiteLLM gateway:    RateLimitError, litellm.RateLimitError
+        retry=retry_if_exception_message(
+            match=(
+                r".*429.*"
+                r"|.*quota.*"
+                r"|.*exhausted.*"
+                r"|.*overloaded.*"           # Anthropic overloaded_error
+                r"|.*rate.?limit.*"          # rate_limit_error, RateLimitError
+                r"|.*AnthropicError.*"       # anthropic SDK wrapper
+                r"|.*litellm\.RateLimit.*"   # LiteLLM specific
+            )
+        ),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
-    def _call_gemini(self, img_bytes: bytes, mime: str) -> str:
-        global _last_gemini_time
-        
-        with _gemini_lock:
+    def _call_vision_api(self, img_bytes: bytes, mime: str) -> str:
+        """
+        Send one image to the configured Vision model and return the raw text reply.
+
+        Rate-gate design
+        ────────────────
+        The global _vision_api_lock protects ONLY the timestamp read/write
+        (a microsecond operation). The actual API call — which can take 2-5s
+        of network I/O — runs OUTSIDE the lock so other threads are not
+        blocked waiting for network latency.
+
+        The timestamp is written BEFORE the lock is released, which means the
+        gate measures time between dispatch points (not between completions).
+        This is intentional: it prevents a burst of threads all reading a
+        stale timestamp and simultaneously firing requests the moment the
+        delay expires.
+        """
+        global _last_vision_api_time
+
+        # ── Rate gate: enforce minimum delay between dispatches ────────────
+        # Lock held for < 1ms (just reading a float and sleeping if needed).
+        with _vision_api_lock:
             now = time.time()
-            elapsed = now - _last_gemini_time
-            if elapsed < GEMINI_MIN_DELAY:
-                sleep_time = GEMINI_MIN_DELAY - elapsed
-                logger.info(f"Rate limiting: sleeping {sleep_time:.2f}s before calling API...")
+            elapsed = now - _last_vision_api_time
+            if elapsed < VISION_API_MIN_DELAY:
+                sleep_time = VISION_API_MIN_DELAY - elapsed
+                logger.debug("Vision API rate gate: sleeping %.2fs", sleep_time)
                 time.sleep(sleep_time)
-            
-            if self.use_litellm:
-                import base64
-                base64_image = base64.b64encode(img_bytes).decode("utf-8")
-                
-                kwargs = {
-                    "model": self.model,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": VISION_PROMPT},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:{mime};base64,{base64_image}"
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    "temperature": 0.0,
-                }
-                api_key = os.getenv("LITELLM_API_KEY")
-                api_base = os.getenv("LITELLM_API_BASE")
-                if api_key:
-                    kwargs["api_key"] = api_key
-                if api_base:
-                    kwargs["api_base"] = api_base
-                
-                response = self._client.completion(**kwargs)
-                reply = response.choices[0].message.content
-            else:
-                image_part = genai_types.Part.from_bytes(data=img_bytes, mime_type=mime)
-                response = self._client.models.generate_content(
-                    model=self.model, contents=[VISION_PROMPT, image_part]
-                )
-                reply = response.text
-                
-            _last_gemini_time = time.time()
-            
+            # Stamp BEFORE releasing so the next thread sees an up-to-date time
+            _last_vision_api_time = time.time()
+        # ── Lock released — API call runs concurrently with other threads ──
+
+        if self.use_litellm:
+            import base64
+            base64_image = base64.b64encode(img_bytes).decode("utf-8")
+            kwargs = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": VISION_PROMPT},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{mime};base64,{base64_image}"},
+                            },
+                        ],
+                    }
+                ],
+                "temperature": 0.0,
+            }
+            api_key = os.getenv("LITELLM_API_KEY")
+            api_base = os.getenv("LITELLM_API_BASE")
+            if api_key:
+                kwargs["api_key"] = api_key
+            if api_base:
+                kwargs["api_base"] = api_base
+            response = self._client.completion(**kwargs)
+            reply = response.choices[0].message.content
+        else:
+            image_part = genai_types.Part.from_bytes(data=img_bytes, mime_type=mime)
+            response = self._client.models.generate_content(
+                model=self.model, contents=[VISION_PROMPT, image_part]
+            )
+            reply = response.text
+
         self._gemini_api_calls += 1
         return reply
 
@@ -661,9 +709,9 @@ class HybridPromoExtractor:
             buf = BytesIO()
             fmt = "PNG" if mime == "image/png" else "JPEG"
             img.save(buf, format=fmt)
-            raw = self._call_gemini(buf.getvalue(), f"image/{fmt.lower()}")
+            raw = self._call_vision_api(buf.getvalue(), f"image/{fmt.lower()}")
         except Exception as e:
-            logger.error("Gemini call failed for %s: %s", label, e)
+            logger.error("Vision API call failed for %s: %s", label, e)
             return []
 
         raw = re.sub(r"```(?:json)?|```", "", raw).strip()

@@ -38,5 +38,6 @@
   "min_image_height": 150,
   "min_aspect_ratio": 1.5,
   "request_delay_seconds": 4,
-  "scroll_depth": 2
+  "scroll_depth": 2,
+  "enabled": false
 }

@@ -60,7 +60,6 @@ DOWNLOAD_DELAY = 1
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
     "promo_scraper.pipelines.PostgresPipeline": 300,
-    "promo_scraper.pipelines.ProductSnapshotPipeline": 301,
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)
