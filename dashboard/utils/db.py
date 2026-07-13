@@ -22,7 +22,7 @@ def get_promotions() -> pd.DataFrame:
                 p.id,
                 p.brand,
                 p.offer_title,
-                p.raw_text,
+                p.category,
                 p.source_name,
                 p.source_url,
                 p.extraction_confidence,

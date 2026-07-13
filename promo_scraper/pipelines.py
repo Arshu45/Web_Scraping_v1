@@ -9,8 +9,14 @@ from database.connection import get_session
 from database.models import Competitor, Promotion
 
 
-def make_offer_hash(source: str, brand: str, title: str) -> str:
+def make_offer_hash(source: str, brand: str, title: str, source_url: str | None = None) -> str:
     """Generate a stable SHA-256 fingerprint for deduplication."""
+    source_part = source_url or ""
+    raw = f"{source}|{brand}|{source_part}|{title}".lower().strip()
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
+
+def make_legacy_offer_hash(source: str, brand: str, title: str) -> str:
     raw = f"{source}|{brand}|{title}".lower().strip()
     return hashlib.sha256(raw.encode('utf-8')).hexdigest()
 
@@ -39,6 +45,7 @@ class PostgresPipeline:
         brand_name  = item.get('brand', 'unknown')
         source_name = item.get('source', 'unknown')
         title       = item.get('title', '')
+        source_url  = item.get('source_url')
 
         # 1. Look up competitor_id from DB
         competitor = self.session.query(Competitor).filter_by(name=brand_name).first()
@@ -47,14 +54,21 @@ class PostgresPipeline:
             return item
 
         # 2. Generate deduplication hash
-        offer_hash = make_offer_hash(source_name, brand_name, title)
+        offer_hash = make_offer_hash(source_name, brand_name, title, source_url)
 
         # 3. Upsert: check if offer already exists
         existing = self.session.query(Promotion).filter_by(offer_hash=offer_hash).first()
+        if not existing:
+            legacy_hash = make_legacy_offer_hash(source_name, brand_name, title)
+            legacy = self.session.query(Promotion).filter_by(offer_hash=legacy_hash).first()
+            if legacy and legacy.source_url == source_url:
+                existing = legacy
+                existing.offer_hash = offer_hash
 
         if existing:
             # Update only the scraped_at timestamp — don't duplicate
             existing.scraped_at = datetime.utcnow()
+            existing.category = item.get('category')
             self.items_updated += 1
         else:
             # Insert new promotion
@@ -62,9 +76,9 @@ class PostgresPipeline:
                 competitor_id = competitor.id,
                 brand         = brand_name,
                 offer_title   = title,
-                raw_text      = item.get('raw_text'),
+                category      = item.get('category'),
                 source_name   = source_name,
-                source_url    = item.get('source_url'),
+                source_url    = source_url,
                 offer_hash    = offer_hash,
                 scraped_at    = datetime.utcnow(),
                 created_at    = datetime.utcnow(),

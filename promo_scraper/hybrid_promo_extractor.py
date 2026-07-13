@@ -67,14 +67,12 @@ Extract every offer or discount visible in the image.
 
 Return a JSON array only — no explanation, no markdown, no code fences.
 Each element must have exactly these fields:
-  - "promo_text"   : the full offer text as it appears in the image
-  - "category"     : the product category (e.g. "Clothing", "Footwear", "Bedding")
-  - "discount_min" : lower bound discount % as an integer, or null
-  - "discount_max" : upper bound discount % as an integer, or null
-  - "confidence"   : "high", "medium", or "low"
+  - "promo_text" : the full offer text as it appears in the image
+  - "category"   : one reporting category from this list only: "Home", "Entertainment", "Womens", "Beauty", "Kids", "Toys", "Menswear", "Footwear", or null
+  - "confidence" : "high", "medium", or "low"
 
 If the image contains no promotional text (lifestyle photo, brand logo, product photo), return: []
-Do not infer or estimate discounts. Only extract text explicitly visible in the image."""
+Only extract text explicitly visible in the image. Do not create discount fields."""
 
 # ── Common browser setup ────────────────────────────────────────────────────
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -98,20 +96,35 @@ class HybridPromoExtractor:
         scroll_depth        int        — scroll iterations to trigger lazy load (default 3)
     """
 
-    COST_PER_IMAGE_USD = 0.000075   
+    HAIKU_INPUT_USD_PER_MILLION_TOKENS = 1.00
+    IMAGE_TOKEN_PIXELS_PER_TOKEN = 800
+    IMAGE_TOKEN_FIXED_OVERHEAD = 170
+    TEXT_TOKEN_CHARS_PER_TOKEN = 4
     GEMINI_MODEL       = "gemini-2.5-flash"
 
     def __init__(self, target_config: dict):
         self.cfg        = target_config
         self.brand      = target_config["brand"]
-        # Can be a single URL string or a list of URL strings
-        raw_url = target_config["source_url"]
-        if isinstance(raw_url, list):
-            self.source_urls = raw_url
-            self.source_url = raw_url[0] if raw_url else ""
-        else:
-            self.source_urls = [raw_url]
-            self.source_url = raw_url
+        # Can be a single URL string, a list of strings, or a list of
+        # {"url": ..., "category": ...} objects for report context.
+        raw_sources = target_config["source_url"]
+        if not isinstance(raw_sources, list):
+            raw_sources = [raw_sources]
+
+        self.source_entries = []
+        for entry in raw_sources:
+            if isinstance(entry, dict):
+                url = entry.get("url") or entry.get("source_url")
+                category = entry.get("category") or entry.get("business_category")
+            else:
+                url = entry
+                category = target_config.get("category")
+            if url:
+                self.source_entries.append({"url": url, "category": category})
+
+        self.source_urls = [entry["url"] for entry in self.source_entries]
+        self.source_url = self.source_urls[0] if self.source_urls else ""
+        self.current_category = self.source_entries[0].get("category") if self.source_entries else target_config.get("category")
         self.strategy   = target_config.get("extraction_strategy", "image")
 
         # Image filter thresholds
@@ -130,6 +143,9 @@ class HybridPromoExtractor:
         self._images_skipped   = 0
         self._offers_extracted = 0
         self._gemini_api_calls = 0
+        self._image_api_calls = 0
+        self._text_api_calls = 0
+        self._estimated_cost_usd = 0.0
 
         # Select client type (litellm or direct gemini)
         self.use_litellm = bool(os.getenv("LITELLM_API_BASE"))
@@ -174,9 +190,10 @@ class HybridPromoExtractor:
         """Run the extraction pipeline. Returns a summary dict."""
         all_offer_items: list[dict] = []
 
-        for url in self.source_urls:
-            self.source_url = url
-            logger.info("Starting extraction → %s [strategy=%s]", self.source_url, self.strategy)
+        for source_entry in self.source_entries:
+            self.source_url = source_entry["url"]
+            self.current_category = source_entry.get("category") or self.cfg.get("category")
+            logger.info("Starting extraction → %s [category=%s, strategy=%s]", self.source_url, self.current_category or "uncategorized", self.strategy)
 
             offer_items: list[dict] = []
 
@@ -196,11 +213,11 @@ class HybridPromoExtractor:
         for item in all_offer_items:
             title_clean = (item.get("title") or "").strip()
             item["title"] = title_clean
-            key = (item.get("source"), item.get("brand"), title_clean.lower())
+            key = (item.get("source"), item.get("brand"), item.get("source_url"), title_clean.lower())
             if key not in seen_keys:
                 seen_keys.add(key)
                 deduped_items.append(item)
-        all_offer_items = deduped_items
+        all_offer_items = self._categorize_offer_items(deduped_items)
 
         self._offers_extracted = len(all_offer_items)
         summary = {
@@ -212,7 +229,10 @@ class HybridPromoExtractor:
             "offers_extracted":  self._offers_extracted,
             "offers_stored":     0,
             "gemini_api_calls":  self._gemini_api_calls,
-            "estimated_cost_usd": round(self._gemini_api_calls * self.COST_PER_IMAGE_USD, 6),
+            "image_api_calls":   self._image_api_calls,
+            "text_api_calls":    self._text_api_calls,
+            "estimated_cost_usd": round(self._estimated_cost_usd, 6),
+            "cost_basis": "Claude Haiku 4.5 input estimate: USD 1.00 per 1M input tokens; image tokens estimated from resized dimensions",
             "offer_items":       all_offer_items,
         }
         logger.info(
@@ -327,8 +347,8 @@ class HybridPromoExtractor:
                                 # price like "$179*" or "$59 each*" — the trailing "*"/"each"
                                 # marks it as a promo price with T&Cs, not a plain product price)
                                 if not re.search(
-                                    r"\d+\s*%|off|sale|deal|save|discount|extra|free\s+(?:[a-zA-Z]+\s+)?(?:delivery|shipping|gift)"
-                                    r"|clearance|offer|\bfor\s+[A-Za-z]{0,3}\$\d|\bfrom\s+[A-Za-z]{0,3}\$\d"
+                                    r"\d+\s*%|\boff\b|sale|deal|save|discount|extra|free\s+(?:[a-zA-Z]+\s+)?(?:delivery|shipping|gift)"
+                                    r"|clearance|\boffer\b|\bfor\s+[A-Za-z]{0,3}\$\d|\bfrom\s+[A-Za-z]{0,3}\$\d"
                                     r"|\$\d+\s*\*|\$\d+\s*each",
                                     text, re.I,
                                 ):
@@ -626,6 +646,120 @@ class HybridPromoExtractor:
         return [u for u in urls if not (u in seen or seen.add(u))]  # type: ignore
 
     # ═══════════════════════════════════════════════════════════════════════
+    # Cost estimation
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _input_token_cost(self, token_count: float) -> float:
+        return (token_count / 1_000_000) * self.HAIKU_INPUT_USD_PER_MILLION_TOKENS
+
+    def _estimate_text_tokens(self, text: str) -> int:
+        return max(1, int(len(text or "") / self.TEXT_TOKEN_CHARS_PER_TOKEN))
+
+    def _estimate_image_tokens(self, width: int, height: int) -> int:
+        visual_tokens = (width * height) / self.IMAGE_TOKEN_PIXELS_PER_TOKEN
+        return int(visual_tokens + self.IMAGE_TOKEN_FIXED_OVERHEAD)
+
+    def _estimate_image_input_cost(self, width: int, height: int, prompt: str) -> float:
+        tokens = self._estimate_image_tokens(width, height) + self._estimate_text_tokens(prompt)
+        return self._input_token_cost(tokens)
+
+    def _estimate_text_input_cost(self, prompt: str) -> float:
+        return self._input_token_cost(self._estimate_text_tokens(prompt))
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Category classification
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _call_text_api(self, prompt: str) -> str:
+        """Send a text-only prompt to the configured LLM."""
+        global _last_vision_api_time
+
+        with _vision_api_lock:
+            now = time.time()
+            elapsed = now - _last_vision_api_time
+            if elapsed < VISION_API_MIN_DELAY:
+                time.sleep(VISION_API_MIN_DELAY - elapsed)
+            _last_vision_api_time = time.time()
+
+        if self.use_litellm:
+            kwargs = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+            }
+            api_key = os.getenv("LITELLM_API_KEY")
+            api_base = os.getenv("LITELLM_API_BASE")
+            if api_key:
+                kwargs["api_key"] = api_key
+            if api_base:
+                kwargs["api_base"] = api_base
+            response = self._client.completion(**kwargs)
+            reply = response.choices[0].message.content
+        else:
+            response = self._client.models.generate_content(
+                model=self.model, contents=[prompt]
+            )
+            reply = response.text
+
+        self._gemini_api_calls += 1
+        self._text_api_calls += 1
+        self._estimated_cost_usd += self._estimate_text_input_cost(prompt)
+        return reply
+
+    def _categorize_offer_items(self, offer_items: list[dict]) -> list[dict]:
+        """Assign reporting categories to extracted offers in one LLM batch."""
+        if not offer_items or not self._client:
+            return offer_items
+
+        allowed = {"Home", "Entertainment", "Womens", "Beauty", "Kids", "Toys", "Menswear", "Footwear"}
+        records = [
+            {
+                "id": idx,
+                "brand": item.get("brand"),
+                "source_url": item.get("source_url"),
+                "promo_text": item.get("title"),
+                "current_category": item.get("category"),
+            }
+            for idx, item in enumerate(offer_items)
+        ]
+        prompt = (
+            "You categorize retail promotions for a weekly competitor matrix.\n"
+            "Assign exactly one category from this list only: Home, Entertainment, Womens, Beauty, Kids, Toys, Menswear, Footwear.\n"
+            "Use the promo text, brand, and source_url. If the source_url is a department page such as /men/ or /kids/, use that as strong evidence.\n"
+            "Return JSON only, as an array of objects with exactly: id, category.\n"
+            "Do not add explanations or markdown.\n\n"
+            f"Promotions:\n{json.dumps(records, ensure_ascii=False)}"
+        )
+
+        try:
+            raw = self._call_text_api(prompt)
+            raw = re.sub(r"```(?:json)?|```", "", raw).strip()
+            rows = json.loads(raw)
+        except Exception as e:
+            logger.warning("Category classification failed; keeping existing categories: %s", e)
+            return offer_items
+
+        if not isinstance(rows, list):
+            return offer_items
+
+        by_id = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            try:
+                idx = int(row.get("id"))
+            except (TypeError, ValueError):
+                continue
+            category = row.get("category")
+            if category in allowed:
+                by_id[idx] = category
+
+        for idx, item in enumerate(offer_items):
+            if idx in by_id:
+                item["category"] = by_id[idx]
+        return offer_items
+
+    # ═══════════════════════════════════════════════════════════════════════
     # Gemini Vision call (shared by image + screenshot strategies)
     # ═══════════════════════════════════════════════════════════════════════
 
@@ -729,6 +863,8 @@ class HybridPromoExtractor:
             buf = BytesIO()
             fmt = "PNG" if mime == "image/png" else "JPEG"
             img.save(buf, format=fmt)
+            self._image_api_calls += 1
+            self._estimated_cost_usd += self._estimate_image_input_cost(img.width, img.height, VISION_PROMPT)
             raw = self._call_vision_api(buf.getvalue(), f"image/{fmt.lower()}")
         except Exception as e:
             logger.error("Vision API call failed for %s: %s", label, e)
@@ -780,7 +916,6 @@ class HybridPromoExtractor:
             "brand":        self.brand,
             "source_url":   self.source_url,
             "title":        text[:200],
-            "raw_text":     text,
             "category":     None,
             "discount_min": min(nums) if len(nums) >= 2 else (nums[0] if nums else None),
             "discount_max": max(nums) if len(nums) >= 2 else None,
@@ -811,9 +946,8 @@ class HybridPromoExtractor:
             items.append({
                 "source":       "image_promo",
                 "brand":        self.brand,
-                "source_url":   source_url,
+                "source_url":   self.source_url,
                 "title":        text,
-                "raw_text":     text,
                 "category":     offer.get("category"),
                 "discount_min": _f(offer.get("discount_min")),
                 "discount_max": _f(offer.get("discount_max")),
