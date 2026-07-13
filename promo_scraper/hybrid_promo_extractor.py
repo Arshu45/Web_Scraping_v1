@@ -224,13 +224,13 @@ class HybridPromoExtractor:
     def _create_stealth_page(self, pw) -> tuple[Any, Any]:
         """Launch browser and context with stealth settings to bypass anti-bot screens."""
         browser = pw.chromium.launch(
+            channel="chrome",
             headless=True,
             args=[
                 "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
                 "--disable-infobars",
-                "--disable-dev-shm-usage",  # prevents Chrome OOM crashes on Linux
-                "--disable-gpu",            # headless never uses GPU; saves ~30MB/instance
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
                 "--window-size=1440,900",
             ]
         )
@@ -248,6 +248,13 @@ class HybridPromoExtractor:
         page = context.new_page()
         page.add_init_script("delete navigator.__proto__.webdriver;")
         return browser, page
+
+    @staticmethod
+    def _norm_key(s: str) -> str:
+        # Strip punctuation/separators so near-identical strings (desktop vs.
+        # mobile-nav copies, or Gemini OCR variance like a trailing period)
+        # dedupe as one offer.
+        return re.sub(r"[^\w\s%$]", "", s).lower().strip()
 
     def _run_playwright_extraction(self) -> list[dict]:
         """
@@ -270,12 +277,7 @@ class HybridPromoExtractor:
                     text_selectors = self.cfg.get("text_selectors", [])
                     candidate_texts: list[str] = []
                     seen_norms: set[str] = set()
-
-                    def _norm(s: str) -> str:
-                        # Strip punctuation/separators so "Buy 2, Get 30% Off"
-                        # and "Buy 2 Get 30% Off" (desktop vs. mobile-nav
-                        # copies of the same link) dedupe as one offer.
-                        return re.sub(r"[^\w\s%$]", "", s).lower().strip()
+                    _norm = self._norm_key
 
                     for frame in page.frames:
                         for selector in text_selectors:
@@ -321,10 +323,13 @@ class HybridPromoExtractor:
 
                                 # Only keep text that looks promotional (percentage off, free
                                 # shipping, multibuy/price-threshold offers like "2 for $99",
-                                # "Jackets from $99", or "2 from AU$599", etc.)
+                                # "Jackets from $99", "2 from AU$599", or a flat asterisked/each
+                                # price like "$179*" or "$59 each*" — the trailing "*"/"each"
+                                # marks it as a promo price with T&Cs, not a plain product price)
                                 if not re.search(
                                     r"\d+\s*%|off|sale|deal|save|discount|extra|free\s+(?:[a-zA-Z]+\s+)?(?:delivery|shipping|gift)"
-                                    r"|clearance|offer|\bfor\s+[A-Za-z]{0,3}\$\d|\bfrom\s+[A-Za-z]{0,3}\$\d",
+                                    r"|clearance|offer|\bfor\s+[A-Za-z]{0,3}\$\d|\bfrom\s+[A-Za-z]{0,3}\$\d"
+                                    r"|\$\d+\s*\*|\$\d+\s*each",
                                     text, re.I,
                                 ):
                                     continue
@@ -478,6 +483,21 @@ class HybridPromoExtractor:
                 logger.error("Playwright extraction error: %s", e)
             finally:
                 browser.close()
+
+        # Vision (Gemini OCR) output isn't perfectly deterministic — the same
+        # banner can yield "...purchase." on one call and "...purchase" (no
+        # trailing period) on another. Apply the same normalized-text dedup
+        # used for scraped text here too, across both text and image offers.
+        deduped_items: list[dict] = []
+        seen_final_norms: set[str] = set()
+        for item in offer_items:
+            norm = self._norm_key(item.get("title", ""))
+            if norm and norm in seen_final_norms:
+                continue
+            if norm:
+                seen_final_norms.add(norm)
+            deduped_items.append(item)
+        offer_items = deduped_items
 
         logger.info("Playwright strategy: %d images/elements processed → %d offers",
                     self._images_processed, len(offer_items))

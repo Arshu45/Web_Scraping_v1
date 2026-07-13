@@ -1,15 +1,12 @@
 {
-  "brand": "Wild Rhino",
-  "source_url": "https://wildrhinoshoes.com.au/",
+  "brand": "Van Heusen",
+  "source_url": "https://www.vanheusen.com.au/",
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
-    ".topbar__message"
+    ".mgz-content-carouse-slide"
   ],
-  "screenshot_selectors": [
-    ".hero__block-image",
-    ".hero__image"
-  ],
+  "screenshot_selectors": [],
   "min_image_width": 400,
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
