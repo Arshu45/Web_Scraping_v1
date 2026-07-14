@@ -16,6 +16,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.connection import engine, init_db
 
 
+def ensure_schema_columns():
+    """Apply small schema updates for existing local databases."""
+    statements = [
+        "ALTER TABLE promotions ADD COLUMN IF NOT EXISTS category VARCHAR(100)",
+        "ALTER TABLE promotions DROP COLUMN IF EXISTS raw_text",
+    ]
+    with engine.begin() as conn:
+        for statement in statements:
+            conn.execute(text(statement))
+
+
 def main():
     print("🚀 Initializing database...")
 
@@ -32,6 +43,7 @@ def main():
     # 2. Recreate tables
     try:
         init_db()
+        ensure_schema_columns()
         print("   ✓ All tables ('competitors', 'promotions') initialized successfully.")
         print("\n✅ Database is ready!")
         print("\n👉 Next steps:")

@@ -9,7 +9,7 @@ class OfferItem(scrapy.Item):
 
     # Content
     title       = scrapy.Field()   # Short title / headline
-    raw_text    = scrapy.Field()   # Full scraped text
+    category    = scrapy.Field()   # Business category for weekly reporting
 
     # Metadata
     scraped_at  = scrapy.Field()   # ISO timestamp

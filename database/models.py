@@ -41,7 +41,7 @@ class Promotion(Base):
 
     # Raw scraped content
     offer_title     = Column(Text, nullable=False)
-    raw_text        = Column(Text)
+    category        = Column(String(100))
 
     # Source tracking
     source_name            = Column(String(50), nullable=False)

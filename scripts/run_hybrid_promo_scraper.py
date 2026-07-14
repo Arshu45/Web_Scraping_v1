@@ -14,6 +14,7 @@ Usage (via Prefect flow):
     from scripts.run_hybrid_promo_scraper import scrape_single_target, load_targets
 """
 
+import argparse
 import hashlib
 import json
 import glob
@@ -48,25 +49,42 @@ CONFIG_DIR = os.path.join(
 )
 
 
-def load_targets() -> list[dict]:
-    """Scan config/targets/*.json and return all target configs."""
+def _load_target_file(config_file: str) -> dict | None:
+    try:
+        with open(config_file, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        if cfg.get("enabled", True) is False:
+            logger.info("Target brand '%s' is disabled in config (%s) — skipping", cfg.get("brand"), os.path.basename(config_file))
+            return None
+        return cfg
+    except Exception as e:
+        logger.error("Failed to load target config from %s: %s", config_file, e)
+        return None
+
+
+def load_targets(target_path: str | None = None) -> list[dict]:
+    """Load one target config or scan config/targets/*.json."""
+    if target_path:
+        cfg = _load_target_file(target_path)
+        return [cfg] if cfg else []
+
     targets = []
     for config_file in sorted(glob.glob(os.path.join(CONFIG_DIR, "*.json"))):
-        try:
-            with open(config_file, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-                if cfg.get("enabled", True) is False:
-                    logger.info("Target brand '%s' is disabled in config (%s) — skipping", cfg.get("brand"), os.path.basename(config_file))
-                    continue
-                targets.append(cfg)
-        except Exception as e:
-            logger.error("Failed to load target config from %s: %s", config_file, e)
+        cfg = _load_target_file(config_file)
+        if cfg:
+            targets.append(cfg)
     return targets
 
 
 # ── DB helpers ─────────────────────────────────────────────────────────────────
 
-def _make_offer_hash(source: str, brand: str, title: str) -> str:
+def _make_offer_hash(source: str, brand: str, title: str, source_url: str | None = None) -> str:
+    source_part = source_url or ""
+    raw = f"{source}|{brand}|{source_part}|{title}".lower().strip()
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _make_legacy_offer_hash(source: str, brand: str, title: str) -> str:
     raw = f"{source}|{brand}|{title}".lower().strip()
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -96,19 +114,27 @@ def _save_offer_items(offer_dicts: list[dict], session) -> tuple[int, int]:
         logger.info("Auto-created competitor '%s' in DB", brand_name)
 
     for item in offer_dicts:
-        offer_hash = _make_offer_hash(item["source"], brand_name, item["title"])
+        source_url = item.get("source_url")
+        offer_hash = _make_offer_hash(item["source"], brand_name, item["title"], source_url)
         existing = session.query(Promotion).filter_by(offer_hash=offer_hash).first()
+        if not existing:
+            legacy_hash = _make_legacy_offer_hash(item["source"], brand_name, item["title"])
+            legacy = session.query(Promotion).filter_by(offer_hash=legacy_hash).first()
+            if legacy and legacy.source_url == source_url:
+                existing = legacy
+                existing.offer_hash = offer_hash
 
         if existing:
             existing.scraped_at            = datetime.now(timezone.utc)
             existing.extraction_confidence = item.get("confidence")
+            existing.category              = item.get("category")
             updated += 1
         else:
             session.add(Promotion(
                 competitor_id         = competitor.id,
                 brand                 = brand_name,
                 offer_title           = item["title"],
-                raw_text              = item.get("raw_text"),
+                category              = item.get("category"),
                 source_name           = item["source"],
                 source_url            = item.get("source_url"),
                 extraction_confidence = item.get("confidence"),
@@ -175,12 +201,12 @@ def scrape_single_target(target: dict) -> dict:
 
 # ── Standalone runner (sequential, for direct CLI use) ─────────────────────────
 
-def run_hybrid_promo_scraper() -> list[dict]:
+def run_hybrid_promo_scraper(target_path: str | None = None) -> list[dict]:
     """
     Runs all targets SEQUENTIALLY when called directly (python scripts/run_...).
     For concurrent execution, use the Prefect flow in flows/master_pipeline.py.
     """
-    targets = load_targets()
+    targets = load_targets(target_path)
     all_summaries = [scrape_single_target(t) for t in targets]
     _print_summary(all_summaries)
     return all_summaries
@@ -217,4 +243,7 @@ def _print_summary(all_summaries: list[dict]) -> None:
 
 
 if __name__ == "__main__":
-    run_hybrid_promo_scraper()
+    parser = argparse.ArgumentParser(description="Run the hybrid promo scraper.")
+    parser.add_argument("--target", help="Path to one target config JSON, e.g. config/targets/the_iconic.json")
+    args = parser.parse_args()
+    run_hybrid_promo_scraper(args.target)
