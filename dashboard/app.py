@@ -11,7 +11,7 @@ from utils.db import get_promotions
 from utils.styles import apply_css, page_header, section_label
 
 st.set_page_config(
-    page_title="Promotional Intelligence",
+    page_title="Myer Competitor Analysis",
     page_icon="◈",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -71,7 +71,7 @@ filtered_df = df[
 ]
 
 # ── Main Content ──
-page_header("Promotional Intelligence", "Monitor active discounts and promotional campaigns across target brands.")
+page_header("Myer Competitor Analysis", "Monitor active discounts and promotional campaigns across target brands.")
 
 # Metrics
 st.markdown('<div class="section-label">KPI Metrics</div>', unsafe_allow_html=True)
