@@ -287,24 +287,25 @@ class HybridPromoExtractor:
                                 continue
                             for el in elements:
                                 try:
-                                    # Skip elements hidden via responsive
-                                    # (mobile/desktop) breakpoint classes — Playwright's
-                                    # inner_text() doesn't apply normal line-break-to-space
-                                    # conversion on unlaid-out elements, so a hidden
-                                    # duplicate can come back malformed (e.g. "GET30%"
-                                    # instead of "GET 30%") and defeat dedup.
-                                    if not el.is_visible():
-                                        # If it is a slider/announcement/promo element, extract using text_content()
-                                        cls_attr = el.get_attribute("class") or ""
-                                        parent_cls = frame.evaluate('(el) => el.parentElement ? el.parentElement.className : ""', el) or ""
-                                        is_announcement = any(k in (cls_attr + " " + parent_cls).lower() for k in ("announcement", "slider", "carousel", "promo", "banner"))
-                                        if not is_announcement:
-                                            continue
+                                    # Prefer inner_text() — it applies normal line-break-to-space
+                                    # conversion for laid-out (visible) elements. But many
+                                    # carousels (owl-carousel, custom sliders, this site's
+                                    # "keyline" promo strip, etc.) only render one slide at a
+                                    # time and hide the rest via CSS, and the hiding scheme/
+                                    # class naming varies too much across sites to reliably
+                                    # detect by keyword — so fall back to text_content() for
+                                    # any element inner_text() can't read, rather than
+                                    # skipping it and silently losing real, distinct rotating
+                                    # promos (as happened with this site's 5-slide carousel,
+                                    # where only the currently-active slide was ever captured).
+                                    text = el.inner_text().strip()
+                                    if not text:
                                         text = el.text_content().strip()
-                                    else:
-                                        text = el.inner_text().strip()
                                 except Exception:
-                                    continue
+                                    try:
+                                        text = el.text_content().strip()
+                                    except Exception:
+                                        continue
 
                                 # Deduplicate & filter noise
                                 text = re.sub(r"\s+", " ", text)
