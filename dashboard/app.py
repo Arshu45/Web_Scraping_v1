@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from utils.db import get_promotions
 from utils.styles import apply_css, page_header, section_label
+from utils.exporter import export_to_excel
 
 st.set_page_config(
     page_title="Myer Competitor Analysis",
@@ -163,11 +164,24 @@ if not filtered_df.empty:
 st.markdown("<hr>", unsafe_allow_html=True)
 
 # ── Weekly Competitor Matrix ──
-st.markdown('<div class="section-label">Weekly Competitor Matrix</div>', unsafe_allow_html=True)
-
 if filtered_df.empty:
+    st.markdown('<div class="section-label">Weekly Competitor Matrix</div>', unsafe_allow_html=True)
     st.info("No categorized promotions available for the selected filters.")
 else:
+    col_lbl, col_btn = st.columns([3, 1], vertical_alignment="center")
+    with col_lbl:
+        st.markdown('<div class="section-label" style="margin-top:0; margin-bottom:0;">Weekly Competitor Matrix</div>', unsafe_allow_html=True)
+    with col_btn:
+        excel_data = export_to_excel(filtered_df)
+        st.download_button(
+            label="📥 Export Matrix to Excel",
+            data=excel_data,
+            file_name=f"weekly_matrix_{datetime.date.today()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+    st.markdown('<div style="margin-top: 1rem;"></div>', unsafe_allow_html=True)
+
     weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     matrix_df = filtered_df.copy()
     matrix_df["Day"] = matrix_df["scraped_at"].dt.day_name()
@@ -187,7 +201,11 @@ else:
         matrix = matrix.reset_index().rename(columns={"brand": category})
 
         st.markdown(f"**{category}**")
-        st.dataframe(matrix, width="stretch", hide_index=True)
+        st.dataframe(
+            matrix,
+            width="stretch",
+            hide_index=True
+        )
 
 st.markdown("<hr>", unsafe_allow_html=True)
 

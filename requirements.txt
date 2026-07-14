@@ -21,4 +21,6 @@ plotly==6.7.0
 # ── Utilities ──────────────────────────────────────
 python-dotenv==1.2.2           # Load .env configuration
 httpx==0.28.1                 # HTTP client for downloading images
+openpyxl==3.1.5               # Excel sheet generation for exporting promotions
+
 

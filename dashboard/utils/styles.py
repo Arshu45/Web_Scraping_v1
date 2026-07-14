@@ -113,12 +113,71 @@ def apply_css():
     tbody tr:hover { background: #F6F6FA; }
     tbody td { font-size: 0.85rem; color: #505060; padding: 9px 12px; }
 
+    .weekly-matrix {
+        width: 100%;
+        table-layout: fixed;
+        border: 1px solid #E0E0EA;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #FFFFFF;
+        margin-bottom: 1.5rem;
+    }
+    .weekly-matrix th,
+    .weekly-matrix td {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: normal;
+        vertical-align: top;
+        line-height: 1.45;
+        border-bottom: 1px solid #E5E5EE;
+        border-right: 1px solid #E5E5EE;
+    }
+    .weekly-matrix th {
+        background: #F7F7FA;
+        color: #707080;
+        font-size: 0.78rem;
+        text-transform: none;
+        letter-spacing: 0;
+    }
+    .weekly-matrix td {
+        min-height: 72px;
+        padding: 12px 10px;
+        color: #1A1A2E;
+    }
+    .weekly-matrix .brand-cell {
+        width: 150px;
+        font-weight: 600;
+        white-space: normal;
+    }
+    .weekly-matrix .promo-cell {
+        min-width: 140px;
+    }
+
     /* ── Streamlit widget tweaks ──────────────────────────────────── */
     .stSelectbox > div > div, .stMultiSelect > div > div {
         background: #FFFFFF !important;
         border-color: #E5E5EE !important;
         color: #1A1A2E !important;
         border-radius: 8px !important;
+    }
+
+    .stMultiSelect [data-baseweb="tag"] {
+        background-color: #EEF0F8 !important;
+        border: 1px solid #D9DDEA !important;
+        border-radius: 6px !important;
+        color: #303247 !important;
+        box-shadow: none !important;
+    }
+    .stMultiSelect [data-baseweb="tag"] span {
+        color: #303247 !important;
+        font-weight: 500 !important;
+    }
+    .stMultiSelect [data-baseweb="tag"] svg {
+        fill: #6F7285 !important;
+    }
+    .stMultiSelect [data-baseweb="tag"]:hover {
+        background-color: #E5E8F3 !important;
+        border-color: #C9CEDF !important;
     }
 
     /* ── Chat ────────────────────────────────────────────────────── */
