@@ -5,6 +5,8 @@ alembic==1.18.4                 # DB schema migrations
 
 # ── Orchestration ──────────────────────────────────
 prefect==3.6.27                 # Pipeline scheduling & monitoring
+langgraph==0.2.62               # Agent workflow orchestration
+docker==7.1.0                   # Python Docker SDK — for sandboxed execution
 
 # ── Image-Based Promo Scraper ──────────────────────
 playwright==1.58.0              # Headless browser automation

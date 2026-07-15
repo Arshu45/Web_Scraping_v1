@@ -1,0 +1,75 @@
+# agent/orchestrator.py
+
+import logging
+from langgraph.graph import StateGraph, END
+from agent.models import AgentState
+
+logger = logging.getLogger(__name__)
+
+def run_exploration_agent(state: AgentState) -> AgentState:
+    logger.info("Stub node: run_exploration_agent on url=%s", state.url)
+    state.status = "exploration"
+    return state
+
+def run_generation_agent(state: AgentState) -> AgentState:
+    logger.info("Stub node: run_generation_agent on brand=%s", state.brand)
+    state.status = "generation"
+    return state
+
+def run_validation_agent(state: AgentState) -> AgentState:
+    logger.info("Stub node: run_validation_agent on brand=%s", state.brand)
+    state.status = "validation"
+    return state
+
+def run_registration(state: AgentState) -> AgentState:
+    logger.info("Stub node: run_registration on brand=%s", state.brand)
+    state.status = "registered"
+    return state
+
+def route_after_validation(state: AgentState) -> str:
+    # If validation_report is None or doesn't exist, default to reject
+    if not state.validation_report:
+        logger.warning("No validation report found. Routing to reject.")
+        return "reject"
+        
+    if state.validation_report.sandbox_violations:
+        logger.warning("Sandbox violations detected. Routing to reject.")
+        return "reject"
+        
+    score = state.validation_report.confidence_score
+    if score >= 90:
+        logger.info("Validation score >= 90 (%d). Routing to auto_approve.", score)
+        return "auto_approve"
+    elif score >= 70:
+        logger.info("Validation score 70-89 (%d). Routing to pending.", score)
+        return "pending"
+    else:
+        logger.info("Validation score < 70 (%d). Routing to reject.", score)
+        return "reject"
+
+def build_agent_graph() -> StateGraph:
+    graph = StateGraph(AgentState)
+
+    graph.add_node("exploration",       run_exploration_agent)
+    graph.add_node("generation",        run_generation_agent)
+    graph.add_node("validation",        run_validation_agent)
+    graph.add_node("registration",      run_registration)
+
+    graph.set_entry_point("exploration")
+
+    graph.add_edge("exploration", "generation")
+    graph.add_edge("generation",  "validation")
+
+    graph.add_conditional_edges(
+        "validation",
+        route_after_validation,
+        {
+            "auto_approve": "registration",
+            "pending":      END,   # Streamlit UI handles human review
+            "reject":       END,
+        }
+    )
+
+    graph.add_edge("registration", END)
+    
+    return graph.compile()
