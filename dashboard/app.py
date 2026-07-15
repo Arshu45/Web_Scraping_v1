@@ -5,6 +5,8 @@ import plotly.express as px
 import os
 import sys
 
+from html import escape
+
 # Add root folder to python path for importing connection
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from utils.db import get_promotions
@@ -18,6 +20,36 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 apply_css()
+
+# ── Helpers ──────────────────────────────────────────────────────────
+def render_weekly_matrix(matrix: pd.DataFrame, brand_column: str) -> str:
+    """Render the weekly pivot table as a styled HTML table."""
+    days = [c for c in matrix.columns if c != brand_column]
+    header_cells = f'<th class="wm-brand-th">{escape(brand_column)}</th>'
+    for day in days:
+        header_cells += f'<th class="wm-day-th">{escape(day)}</th>'
+
+    rows_html = ""
+    for _, row in matrix.iterrows():
+        brand_val = escape(str(row[brand_column]))
+        cells = f'<td class="wm-brand-td">{brand_val}</td>'
+        for day in days:
+            raw = row[day]
+            if pd.isna(raw) or str(raw).strip() == "":
+                cells += '<td class="wm-promo-td wm-empty">—</td>'
+            else:
+                lines = [escape(l) for l in str(raw).split("\n") if l.strip()]
+                bullets = "".join(f'<div class="wm-bullet">{l}</div>' for l in lines)
+                cells += f'<td class="wm-promo-td">{bullets}</td>'
+        rows_html += f"<tr>{cells}</tr>"
+
+    return f"""
+    <div class="wm-scroll">
+      <table class="wm-table">
+        <thead><tr>{header_cells}</tr></thead>
+        <tbody>{rows_html}</tbody>
+      </table>
+    </div>"""
 
 # ── Sidebar Filters ──────────────────────────────────────────────────
 st.sidebar.markdown("""
@@ -180,7 +212,7 @@ else:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
-    st.markdown('<div style="margin-top: 1rem;"></div>', unsafe_allow_html=True)
+    st.markdown('<div style="margin-top: 0.5rem;"></div>', unsafe_allow_html=True)
 
     weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     matrix_df = filtered_df.copy()
@@ -200,12 +232,20 @@ else:
         matrix = matrix.reindex(columns=weekday_order).fillna("")
         matrix = matrix.reset_index().rename(columns={"brand": category})
 
-        st.markdown(f"**{category}**")
-        st.dataframe(
-            matrix,
-            width="stretch",
-            hide_index=True
-        )
+        n_brands = matrix.shape[0]
+        n_promos = cat_df["offer_title"].nunique()
+
+        # Category header with brand + promo count badges
+        st.markdown(f"""
+        <div class="wm-cat-header">
+            <span class="wm-cat-title">{escape(category)}</span>
+            <span class="wm-badge wm-badge-blue">{n_brands} brand{'s' if n_brands != 1 else ''}</span>
+            <span class="wm-badge wm-badge-purple">{n_promos} unique offer{'s' if n_promos != 1 else ''}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.expander("View matrix", expanded=True):
+            st.markdown(render_weekly_matrix(matrix, category), unsafe_allow_html=True)
 
 st.markdown("<hr>", unsafe_allow_html=True)
 
