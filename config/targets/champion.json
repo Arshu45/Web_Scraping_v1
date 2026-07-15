@@ -1,0 +1,29 @@
+{
+  "brand": "Champion Australia",
+  "source_url": "https://www.champion.com.au/",
+  "spider": "image_promo",
+  "extraction_strategy": "hybrid",
+  "text_selectors": [
+    "[data-block-id*='__text_'] h2",
+    "[data-block-id*='__text_'] h3",
+    "[data-block-id*='__text_'] h4",
+    "[data-block-id*='__text_'] h5",
+    "[data-block-id*='__text_'] h6",
+    "[data-block-id*='__text_'] p"
+  ],
+  "screenshot_selectors": [
+    "[class*='image_banner']",
+    ".flickity-slider img",
+    "img.mob-alt",
+    "[class*='mob-alt']"
+  ],
+  "min_image_width": 400,
+  "min_image_height": 150,
+  "min_aspect_ratio": 1.2,
+  "exclude_url_patterns": [
+    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+  ],
+  "request_delay_seconds": 4,
+  "scroll_depth": 3,
+  "enabled": false
+}

@@ -1,0 +1,20 @@
+{
+  "brand": "Gant Australia",
+  "source_url": "https://gant.com.au/",
+  "spider": "image_promo",
+  "extraction_strategy": "text",
+  "text_selectors": [
+    "div:has(> button[data-drawer-target='newsletterPanel']) p",
+    "div:has(> [id*='__eyebrow_'])"
+  ],
+  "screenshot_selectors": [],
+  "min_image_width": 400,
+  "min_image_height": 150,
+  "min_aspect_ratio": 1.2,
+  "exclude_url_patterns": [
+    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+  ],
+  "request_delay_seconds": 4,
+  "scroll_depth": 3,
+  "enabled": false
+}
