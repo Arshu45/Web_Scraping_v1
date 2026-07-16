@@ -9,11 +9,12 @@ from database.connection import get_session
 from database.models import Competitor, Promotion
 
 
-def make_offer_hash(source: str, brand: str, title: str, source_url: str | None = None) -> str:
+def make_offer_hash(source: str, brand: str, title: str, source_url: str | None = None, date_str: str = "") -> str:
     """Generate a stable SHA-256 fingerprint for deduplication."""
     source_part = source_url or ""
-    raw = f"{source}|{brand}|{source_part}|{title}".lower().strip()
+    raw = f"{source}|{brand}|{source_part}|{title}|{date_str}".lower().strip()
     return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
 
 
 def make_legacy_offer_hash(source: str, brand: str, title: str) -> str:
@@ -54,7 +55,9 @@ class PostgresPipeline:
             return item
 
         # 2. Generate deduplication hash
-        offer_hash = make_offer_hash(source_name, brand_name, title, source_url)
+        scraped_date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        offer_hash = make_offer_hash(source_name, brand_name, title, source_url, scraped_date_str)
+
 
         # 3. Upsert: check if offer already exists
         existing = self.session.query(Promotion).filter_by(offer_hash=offer_hash).first()

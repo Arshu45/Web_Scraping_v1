@@ -78,10 +78,11 @@ def load_targets(target_path: str | None = None) -> list[dict]:
 
 # ── DB helpers ─────────────────────────────────────────────────────────────────
 
-def _make_offer_hash(source: str, brand: str, title: str, source_url: str | None = None) -> str:
+def _make_offer_hash(source: str, brand: str, title: str, source_url: str | None = None, date_str: str = "") -> str:
     source_part = source_url or ""
-    raw = f"{source}|{brand}|{source_part}|{title}".lower().strip()
+    raw = f"{source}|{brand}|{source_part}|{title}|{date_str}".lower().strip()
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
 
 
 def _make_legacy_offer_hash(source: str, brand: str, title: str) -> str:
@@ -113,9 +114,11 @@ def _save_offer_items(offer_dicts: list[dict], session) -> tuple[int, int]:
         session.flush()   # get competitor.id without a full commit
         logger.info("Auto-created competitor '%s' in DB", brand_name)
 
+    scraped_date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     for item in offer_dicts:
         source_url = item.get("source_url")
-        offer_hash = _make_offer_hash(item["source"], brand_name, item["title"], source_url)
+        offer_hash = _make_offer_hash(item["source"], brand_name, item["title"], source_url, scraped_date_str)
+
         existing = session.query(Promotion).filter_by(offer_hash=offer_hash).first()
         if not existing:
             legacy_hash = _make_legacy_offer_hash(item["source"], brand_name, item["title"])

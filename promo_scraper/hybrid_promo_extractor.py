@@ -107,6 +107,12 @@ VISION_PROMPT_TEMPLATE = """You are a retail promotions analyst.
 Examine the promotional banner image provided.
 Extract every offer or discount visible in the image.
 
+We only want direct promotional offers (e.g., % off, spend-and-save, buy-one-get-one, multi-buys, direct discounts).
+Do NOT extract:
+  - Loyalty/rewards program point accumulations or milestone achievements (e.g., "Collect 750 more ICONS", "1000 ICONS = $10 REWARD", "EARN 2x ICONS").
+  - Newsletter signup incentives (e.g., "Sign up to THE ICONIC News for your $20 voucher").
+  - General shipping/locker rules or logistics notices (e.g., "FREE Express Delivery When You Use a Free, 24/7 Parcel Locker").
+
 Return a JSON array only — no explanation, no markdown, no code fences.
 Each element must have exactly these fields:
   - "promo_text" : the full offer text as it appears in the image
@@ -989,7 +995,9 @@ class HybridPromoExtractor:
             chunk = offer_items[start:start + self.CATEGORIZATION_BATCH_SIZE]
             self._categorize_chunk(chunk)
 
-        return offer_items
+        # Filter out items marked as excluded by the classification step
+        filtered_items = [item for item in offer_items if not item.get("exclude")]
+        return filtered_items
 
     def _categorize_chunk(self, chunk: list[dict]) -> None:
         allowed = set(self.allowed_categories)
@@ -1007,7 +1015,16 @@ class HybridPromoExtractor:
             "You categorize retail promotions for a weekly competitor matrix.\n"
             f"Assign exactly one category from this list only: {self.category_list_text}.\n"
             "Use the promo text, brand, and source_url. If the source_url is a department page such as /men/ or /kids/, use that as strong evidence.\n"
-            "Return JSON only, as an array of objects with exactly: id, category.\n"
+            "\n"
+            "Filter rules:\n"
+            "We only want direct consumer promotional offers (e.g., % off, spend-and-save, buy-one-get-one, multi-buys, direct discounts).\n"
+            "We do NOT want:\n"
+            "- Loyalty/rewards program point accumulations or milestone achievements (e.g., 'Collect 750 more ICONS', '1000 ICONS = $10 REWARD', 'EARN 2x ICONS')\n"
+            "- Newsletter signup incentives (e.g., 'Sign up to THE ICONIC News for your $20 voucher')\n"
+            "- General shipping/locker rules or logistics notices (e.g., 'FREE Express Delivery When You Use a Free, 24/7 Parcel Locker')\n"
+            "\n"
+            "Return JSON only, as an array of objects with exactly: id, category, keep.\n"
+            "Set 'keep' to false if the promotion should be filtered out based on the rules above, otherwise true.\n"
             "Do not add explanations or markdown.\n\n"
             f"Promotions:\n{json.dumps(records, ensure_ascii=False)}"
         )
@@ -1035,15 +1052,20 @@ class HybridPromoExtractor:
             except (TypeError, ValueError):
                 continue
             category = row.get("category")
-            if category in allowed:
-                by_id[idx] = category
-
-        if len(by_id) < len(chunk):
-            logger.info("Category classification matched %d/%d offers in batch", len(by_id), len(chunk))
+            keep = row.get("keep")
+            by_id[idx] = {
+                "category": category if category in allowed else None,
+                "keep": keep if isinstance(keep, bool) else True
+            }
 
         for idx, item in enumerate(chunk):
             if idx in by_id:
-                item["category"] = by_id[idx]
+                res = by_id[idx]
+                if res["keep"] is False:
+                    item["exclude"] = True
+                else:
+                    if res["category"] is not None:
+                        item["category"] = res["category"]
 
     # ═══════════════════════════════════════════════════════════════════════
     # Gemini Vision call (shared by image + screenshot strategies)
@@ -1112,8 +1134,7 @@ class HybridPromoExtractor:
             logger.warning("Malformed JSON from vision model for %s — raw: %s", label, (raw or "")[:200])
             stripped = re.sub(r"```(?:json)?|```", "", raw or "").strip()
             if stripped and stripped != "[]":
-                return [{"promo_text": stripped[:400], "category": None,
-                         "discount_min": None, "discount_max": None, "confidence": "low"}]
+                return [{"promo_text": stripped[:400], "category": None, "confidence": "low"}]
             return None
         return offers
 
@@ -1147,17 +1168,13 @@ class HybridPromoExtractor:
     # ═══════════════════════════════════════════════════════════════════════
 
     def _make_text_offer(self, text: str) -> dict:
-        """Build an offer dict from scraped text. discount_* parsed by regex."""
-        numbers = re.findall(r"(\d+)\s*%", text)
-        nums    = [int(n) for n in numbers if 1 <= int(n) <= 99]
+        """Build an offer dict from scraped text."""
         return {
             "source":       "text_scraper",
             "brand":        self.brand,
             "source_url":   self.source_url,
             "title":        text[:200],
             "category":     None,
-            "discount_min": min(nums) if len(nums) >= 2 else (nums[0] if nums else None),
-            "discount_max": max(nums) if len(nums) >= 2 else None,
             "confidence":   "high",
             "scraped_at":   datetime.now(timezone.utc).isoformat(),
         }
@@ -1178,18 +1195,12 @@ class HybridPromoExtractor:
             if not has_number and not has_benefit:
                 continue
 
-            def _f(v):
-                try: return float(v) if v is not None else None
-                except (TypeError, ValueError): return None
-
             items.append({
                 "source":       "image_promo",
                 "brand":        self.brand,
                 "source_url":   self.source_url,
                 "title":        text,
                 "category":     offer.get("category"),
-                "discount_min": _f(offer.get("discount_min")),
-                "discount_max": _f(offer.get("discount_max")),
                 "confidence":   offer.get("confidence", "medium"),
                 "scraped_at":   datetime.now(timezone.utc).isoformat(),
             })
