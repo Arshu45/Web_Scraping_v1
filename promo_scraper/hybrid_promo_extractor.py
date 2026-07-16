@@ -74,6 +74,8 @@ from tenacity import (
 
 logger = logging.getLogger(__name__)
 
+from .utils import extract_and_log_metrics
+
 # ── Global Vision API rate-gate ─────────────────────────────────────────────
 # Shared across all HybridPromoExtractor instances in the same process.
 # Works for both LiteLLM (Claude Haiku) and direct Gemini calls.
@@ -109,6 +111,7 @@ Extract every offer or discount visible in the image.
 
 We only want direct promotional offers (e.g., % off, spend-and-save, buy-one-get-one, multi-buys, direct discounts).
 Do NOT extract:
+  - First-purchase / first-order / new customer welcome incentives (e.g., "Enjoy 15% off your first purchase", "10% off your first order", welcome coupons).
   - Loyalty/rewards program point accumulations or milestone achievements (e.g., "Collect 750 more ICONS", "1000 ICONS = $10 REWARD", "EARN 2x ICONS").
   - Newsletter signup incentives (e.g., "Sign up to THE ICONIC News for your $20 voucher").
   - General shipping/locker rules or logistics notices (e.g., "FREE Express Delivery When You Use a Free, 24/7 Parcel Locker").
@@ -940,7 +943,15 @@ class HybridPromoExtractor:
             self._image_api_calls += 1
         else:
             self._text_api_calls += 1
-        self._estimated_cost_usd += cost_usd
+
+        call_type = "vision_extraction" if image_bytes is not None else "text_categorization"
+        actual_cost = extract_and_log_metrics(
+            response=response,
+            use_litellm=self.use_litellm,
+            call_type=call_type,
+            default_cost=cost_usd
+        )
+        self._estimated_cost_usd += actual_cost
         return reply
 
     @staticmethod
@@ -1019,6 +1030,7 @@ class HybridPromoExtractor:
             "Filter rules:\n"
             "We only want direct consumer promotional offers (e.g., % off, spend-and-save, buy-one-get-one, multi-buys, direct discounts).\n"
             "We do NOT want:\n"
+            "- First-purchase / first-order / new customer welcome incentives (e.g., 'Enjoy 15% off your first purchase', '10% off your first order', welcome coupons)\n"
             "- Loyalty/rewards program point accumulations or milestone achievements (e.g., 'Collect 750 more ICONS', '1000 ICONS = $10 REWARD', 'EARN 2x ICONS')\n"
             "- Newsletter signup incentives (e.g., 'Sign up to THE ICONIC News for your $20 voucher')\n"
             "- General shipping/locker rules or logistics notices (e.g., 'FREE Express Delivery When You Use a Free, 24/7 Parcel Locker')\n"
