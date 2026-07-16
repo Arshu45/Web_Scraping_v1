@@ -3,17 +3,32 @@
 import logging
 import sys
 import os
+from unittest.mock import patch
 
 # Ensure the root of the project is in the python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent import build_agent_graph, AgentState, ValidationReport
+from agent.models import SiteAnalysis
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def test_auto_approve():
+# Create a mock explore_site function that doesn't hit external APIs
+def get_mock_site_analysis(url, brand):
+    return SiteAnalysis(
+        url=url,
+        brand=brand,
+        screenshot_path="mock_screenshot.png",
+        dom_html="<html><body>Mock DOM</body></html>",
+        extraction_strategy="text",
+        anti_bot_signals={},
+        anti_bot_risk="low"
+    )
+
+@patch('agent.exploration_agent.explore_site', side_effect=get_mock_site_analysis)
+def test_auto_approve(mock_explore):
     logger.info("--- Testing Auto-Approve Route (Score: 95, no violations) ---")
     graph = build_agent_graph()
     
@@ -23,9 +38,6 @@ def test_auto_approve():
         requirements="Test requirements"
     )
     
-    # Pre-populate state for validation node
-    # In a real run, exploration and generation would run first, then validation.
-    # Since our nodes are stubs, we can construct the expected report inside the state.
     state.validation_report = ValidationReport(
         brand="Test Brand",
         scraper_ran=True,
@@ -41,7 +53,8 @@ def test_auto_approve():
     assert final_state["status"] == "registered", f"Expected 'registered', got {final_state['status']}"
     logger.info("✓ Auto-approve test passed!")
 
-def test_pending_review():
+@patch('agent.exploration_agent.explore_site', side_effect=get_mock_site_analysis)
+def test_pending_review(mock_explore):
     logger.info("--- Testing Pending Review Route (Score: 80, no violations) ---")
     graph = build_agent_graph()
     
@@ -63,11 +76,11 @@ def test_pending_review():
     
     final_state = graph.invoke(state)
     logger.info("Final status: %s", final_state["status"])
-    # Should stop at validation node (since pending -> END)
     assert final_state["status"] == "validation", f"Expected 'validation', got {final_state['status']}"
     logger.info("✓ Pending review test passed!")
 
-def test_reject_low_score():
+@patch('agent.exploration_agent.explore_site', side_effect=get_mock_site_analysis)
+def test_reject_low_score(mock_explore):
     logger.info("--- Testing Reject Route (Score: 50, no violations) ---")
     graph = build_agent_graph()
     
@@ -92,7 +105,8 @@ def test_reject_low_score():
     assert final_state["status"] == "validation", f"Expected 'validation', got {final_state['status']}"
     logger.info("✓ Reject low score test passed!")
 
-def test_reject_sandbox_violations():
+@patch('agent.exploration_agent.explore_site', side_effect=get_mock_site_analysis)
+def test_reject_sandbox_violations(mock_explore):
     logger.info("--- Testing Reject Route (Score: 95, with sandbox violations) ---")
     graph = build_agent_graph()
     

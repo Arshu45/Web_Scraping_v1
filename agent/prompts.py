@@ -50,12 +50,12 @@ The target scraper (HybridPromoExtractor) uses two types of selectors:
 2. `screenshot_selectors`: CSS selectors for elements to screenshot and send to Vision API
 
 Respond in JSON format:
-{
+{{
     "extraction_strategy": "text" | "screenshot" | "hybrid",
     "text_selectors": ["selector1", "selector2"],
     "screenshot_selectors": ["selector1", "selector2"],
     "notes": "Explanation of selector choices and any concerns"
-}"""
+}}"""
 
 CONFIG_GENERATION_PROMPT = """You are generating a scraper configuration JSON for a retail website.
 

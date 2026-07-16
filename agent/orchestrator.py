@@ -7,8 +7,16 @@ from agent.models import AgentState
 logger = logging.getLogger(__name__)
 
 def run_exploration_agent(state: AgentState) -> AgentState:
-    logger.info("Stub node: run_exploration_agent on url=%s", state.url)
+    logger.info("Running exploration agent on url=%s", state.url)
     state.status = "exploration"
+    try:
+        from agent.exploration_agent import explore_site
+        site_analysis = explore_site(state.url, state.brand)
+        state.site_analysis = site_analysis
+    except Exception as e:
+        logger.exception("Exploration agent failed on url=%s", state.url)
+        state.status = "failed"
+        state.error = str(e)
     return state
 
 def run_generation_agent(state: AgentState) -> AgentState:

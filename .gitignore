@@ -30,3 +30,6 @@ data/*.xml
 
 # GLiNER model cache
 .gliner_cache/
+
+# Agent Screenshots
+agent_screenshots/
