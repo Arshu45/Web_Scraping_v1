@@ -360,19 +360,22 @@ class HybridPromoExtractor:
                 "--window-size=1440,900",
             ]
         )
-        context = browser.new_context(
-            user_agent=_UA,
-            viewport={"width": 1440, "height": 900},
-            extra_http_headers={
+        context_kwargs = {
+            "user_agent": _UA,
+            "viewport": {"width": 1440, "height": 900},
+        }
+        if self.cfg.get("use_stealth_headers", True):
+            context_kwargs["extra_http_headers"] = {
                 "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
                 "accept-language": "en-US,en;q=0.9",
                 "sec-ch-ua": '"Not-A.Brand";v="99", "Chromium";v="124", "Google Chrome";v="124"',
                 "sec-ch-ua-mobile": "?0",
                 "sec-ch-ua-platform": '"Windows"',
             }
-        )
+        context = browser.new_context(**context_kwargs)
         page = context.new_page()
-        page.add_init_script("delete navigator.__proto__.webdriver;")
+        if self.cfg.get("use_webdriver_patch", True):
+            page.add_init_script("delete navigator.__proto__.webdriver;")
         return browser, page
 
     def _goto_with_retry(self, page, url: str) -> None:
@@ -417,6 +420,7 @@ class HybridPromoExtractor:
             browser, page = self._create_stealth_page(pw)
             try:
                 self._goto_with_retry(page, self.source_url)
+                logger.info("[%s] Page loaded. Title: '%s', Content Length: %d", self.brand, page.title(), len(page.content()))
                 self._wait_and_scroll(page)
 
                 # 1. Text Extraction Strategy
