@@ -214,6 +214,12 @@ class HybridPromoExtractor:
         self.scroll_depth = target_config.get("scroll_depth", 3)
         self.nav_retry_attempts = target_config.get("nav_retry_attempts", 2)
 
+        self.headless = target_config.get("headless", True)
+        env_headless = os.getenv("SCRAPER_HEADLESS")
+        if env_headless is not None:
+            self.headless = env_headless.lower() not in ("false", "0", "off", "no")
+
+
         # Text-promo detection, overridable per site for locale-specific copy
         self.promo_text_re = re.compile(
             target_config.get("promo_keywords_pattern", DEFAULT_PROMO_PATTERN), re.I
@@ -360,7 +366,7 @@ class HybridPromoExtractor:
         """Launch browser and context with stealth settings to bypass anti-bot screens."""
         browser = pw.chromium.launch(
             channel="chrome",
-            headless=True,
+            headless=self.headless,
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--disable-infobars",
@@ -742,7 +748,10 @@ class HybridPromoExtractor:
         urls: list[str] = []
 
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
+            browser = pw.chromium.launch(
+                channel="chrome",
+                headless=self.headless
+            )
             page = browser.new_context(
                 user_agent=_UA, viewport={"width": 1920, "height": 1080}
             ).new_page()
