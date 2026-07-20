@@ -15,7 +15,8 @@
     "a[href*='referafriend']",
     "span[data-ng-show*='newsletter']",
     ".c01240",
-    ".c01243"
+    ".c01243",
+    "a[href*='campaign=lp-']"
   ],
   "screenshot_selectors": [
     "div.dm-sale",
@@ -39,5 +40,5 @@
   "min_aspect_ratio": 1.5,
   "request_delay_seconds": 4,
   "scroll_depth": 2,
-  "enabled": true
+  "enabled": false
 }

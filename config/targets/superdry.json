@@ -1,8 +1,7 @@
 {
   "brand": "Superdry",
   "source_url": [
-    "https://superdry.com.au/",
-    "https://superdry.com.au/collections/sale"
+    "https://superdry.com.au/"
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
@@ -22,5 +21,5 @@
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": true
+  "enabled": false
 }

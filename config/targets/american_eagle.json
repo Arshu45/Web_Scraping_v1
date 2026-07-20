@@ -11,8 +11,6 @@
   "screenshot_selectors": [
     ".ai-hero-banner",
     ".background-image-container",
-    ".image-block__image",
-    "[class*='image-block']",
     "[class*='hero-banner']",
     "[class*='group-block__media']"
   ],
@@ -24,5 +22,5 @@
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": true
+  "enabled": false
 }
