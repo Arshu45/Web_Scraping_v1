@@ -1,0 +1,30 @@
+{
+  "brand": "BIG W",
+  "source_url": "https://www.bigw.com.au",
+  "spider": "image_promo",
+  "extraction_strategy": "hybrid",
+  "text_selectors": [
+    ".banner-content .RichText",
+    ".banner-content p",
+    "img[alt]"
+  ],
+  "screenshot_selectors": [
+    "img.ContentImage[alt*='OFF']",
+    "img.ContentImage[alt*='Clearance']",
+    "img.ContentImage[alt*='Rewards']"
+  ],
+  "min_image_width": 400,
+  "min_image_height": 150,
+  "min_aspect_ratio": 1.2,
+  "exclude_url_patterns": [
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
+  ],
+  "request_delay_seconds": 4,
+  "scroll_depth": 3,
+  "enabled": true
+}
