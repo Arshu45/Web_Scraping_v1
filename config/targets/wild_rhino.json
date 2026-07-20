@@ -18,6 +18,6 @@
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "headless": true,
+  "headless": false,
   "enabled": true
 }
