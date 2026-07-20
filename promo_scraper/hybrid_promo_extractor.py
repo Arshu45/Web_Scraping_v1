@@ -991,26 +991,21 @@ class HybridPromoExtractor:
     # Category classification
     # ═══════════════════════════════════════════════════════════════════════
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # Joint Category Classification & Semantic Deduplication
+    # ═══════════════════════════════════════════════════════════════════════
+
     def _categorize_offer_items(self, offer_items: list[dict]) -> list[dict]:
         """
-        Assign reporting categories to extracted offers, in batches. Batching
-        (rather than one call for the whole run) means a truncated/malformed
-        response only costs you the categories for that batch — the rest of
-        the run's offers keep their vision-provided category as a fallback
-        instead of the whole run silently losing categorization.
+        Processes all extracted offers for this brand in a single LLM pass to:
+        1. Filter out non-promotional/loyalty/newsletter/shipping items.
+        2. Semantically group and deduplicate offers that refer to the same campaign,
+           selecting/synthesizing the single cleanest canonical title.
+        3. Assign an official reporting category to each canonical promotion.
         """
         if not offer_items or not self._client:
             return offer_items
 
-        for start in range(0, len(offer_items), self.CATEGORIZATION_BATCH_SIZE):
-            chunk = offer_items[start:start + self.CATEGORIZATION_BATCH_SIZE]
-            self._categorize_chunk(chunk)
-
-        # Filter out items marked as excluded by the classification step
-        filtered_items = [item for item in offer_items if not item.get("exclude")]
-        return filtered_items
-
-    def _categorize_chunk(self, chunk: list[dict]) -> None:
         allowed = set(self.allowed_categories)
         records = [
             {
@@ -1020,64 +1015,98 @@ class HybridPromoExtractor:
                 "promo_text": item.get("title"),
                 "current_category": item.get("category"),
             }
-            for idx, item in enumerate(chunk)
+            for idx, item in enumerate(offer_items)
         ]
+
         prompt = (
-            "You categorize retail promotions for a weekly competitor matrix.\n"
-            f"Assign exactly one category from this list only: {self.category_list_text}.\n"
-            "Use the promo text, brand, and source_url. If the source_url is a department page such as /men/ or /kids/, use that as strong evidence.\n"
-            "\n"
-            "Filter rules:\n"
-            "We only want direct consumer promotional offers (e.g., % off, spend-and-save, buy-one-get-one, multi-buys, direct discounts).\n"
-            "We do NOT want:\n"
-            "- First-purchase / first-order / new customer welcome incentives (e.g., 'Enjoy 15% off your first purchase', '10% off your first order', welcome coupons)\n"
-            "- Loyalty/rewards program point accumulations or milestone achievements (e.g., 'Collect 750 more ICONS', '1000 ICONS = $10 REWARD', 'EARN 2x ICONS')\n"
-            "- Newsletter signup incentives (e.g., 'Sign up to THE ICONIC News for your $20 voucher')\n"
-            "- General shipping/locker rules or logistics notices (e.g., 'FREE Express Delivery When You Use a Free, 24/7 Parcel Locker')\n"
-            "\n"
-            "Return JSON only, as an array of objects with exactly: id, category, keep.\n"
-            "Set 'keep' to false if the promotion should be filtered out based on the rules above, otherwise true.\n"
-            "Do not add explanations or markdown.\n\n"
-            f"Promotions:\n{json.dumps(records, ensure_ascii=False)}"
+            f"You analyze, categorize, and deduplicate retail promotions for brand '{self.brand}'.\n"
+            "Perform the following 3 tasks carefully:\n\n"
+            "1. FILTERING: Set 'keep': false for non-promotional or unwanted items:\n"
+            "   - First-purchase / first-order / new customer welcome incentives (e.g., 'Enjoy 15% off your first purchase', '10% off your first order', welcome coupons)\n"
+            "   - Loyalty/rewards program point accumulations or milestone achievements (e.g., 'Collect 750 more ICONS', '1000 ICONS = $10 REWARD', 'EARN 2x ICONS')\n"
+            "   - Newsletter signup incentives (e.g., 'Sign up to THE ICONIC News for your $20 voucher')\n"
+            "   - General shipping/locker rules or logistics notices (e.g., 'FREE Express Delivery When You Use a Free, 24/7 Parcel Locker')\n\n"
+            "2. SEMANTIC DEDUPLICATION & CANONICALIZATION:\n"
+            "   - Several extracted texts may refer to the identical underlying offer, discount, or campaign\n"
+            "     (e.g., 'Clearance New Styles Added Up to 50% off selected clearance clothing, footwear and home' vs 'Up to 50% off selected clearance!* Shop now').\n"
+            "   - Group items that describe the same promotion under 'merged_ids'.\n"
+            "   - Provide a clean, complete, and standard 'canonical_title' for the merged promotion (remove CTA clutter like 'Shop now', '*Terms apply', 'While stocks last').\n\n"
+            "3. CATEGORIZATION:\n"
+            f"   - Assign exactly one category from this list only: {self.category_list_text}.\n"
+            "   - Use promo text, brand, and source_url as strong evidence.\n\n"
+            "Return JSON only as a list of objects:\n"
+            "[\n"
+            "  {\n"
+            "    \"canonical_title\": \"Clean descriptive offer text\",\n"
+            "    \"category\": \"Category from list\",\n"
+            "    \"keep\": true,\n"
+            "    \"merged_ids\": [0, 1]\n"
+            "  }\n"
+            "]\n"
+            "Do not add markdown formatting outside the JSON array.\n\n"
+            f"Extracted Promotions:\n{json.dumps(records, ensure_ascii=False)}"
         )
 
         try:
             raw = self._call_llm(
-                text_prompt=prompt, json_mode=True,
+                text_prompt=prompt,
+                json_mode=True,
                 cost_usd=self._estimate_text_input_cost(prompt),
             )
-            rows = self._parse_json_array(raw)
+            clusters = self._parse_json_array(raw)
         except Exception as e:
-            logger.warning("Category classification failed for a batch of %d offers; keeping existing categories: %s", len(chunk), e)
-            return
+            logger.warning("Brand categorization/deduplication call failed; keeping raw items: %s", e)
+            return [item for item in offer_items if not item.get("exclude")]
 
-        if rows is None:
-            logger.warning("Category classification returned unparsable JSON for a batch of %d offers; keeping existing categories", len(chunk))
-            return
+        if not clusters:
+            logger.warning("Categorization returned unparsable response; keeping raw items")
+            return [item for item in offer_items if not item.get("exclude")]
 
-        by_id = {}
-        for row in rows:
-            if not isinstance(row, dict):
+        final_items: list[dict] = []
+        processed_ids = set()
+
+        for cluster in clusters:
+            if not isinstance(cluster, dict):
                 continue
-            try:
-                idx = int(row.get("id"))
-            except (TypeError, ValueError):
-                continue
-            category = row.get("category")
-            keep = row.get("keep")
-            by_id[idx] = {
-                "category": category if category in allowed else None,
-                "keep": keep if isinstance(keep, bool) else True
-            }
 
-        for idx, item in enumerate(chunk):
-            if idx in by_id:
-                res = by_id[idx]
-                if res["keep"] is False:
-                    item["exclude"] = True
-                else:
-                    if res["category"] is not None:
-                        item["category"] = res["category"]
+            keep = cluster.get("keep")
+            if keep is False:
+                continue
+
+            merged_ids = cluster.get("merged_ids", [])
+            if not isinstance(merged_ids, list) or not merged_ids:
+                continue
+
+            # Find the primary item to inherit metadata (source_url, brand, confidence, etc.)
+            valid_ids = [idx for idx in merged_ids if isinstance(idx, int) and 0 <= idx < len(offer_items)]
+            if not valid_ids:
+                continue
+
+            primary_idx = valid_ids[0]
+            primary_item = dict(offer_items[primary_idx])
+
+            # Apply LLM canonical title & category
+            canonical_title = cluster.get("canonical_title")
+            if canonical_title and isinstance(canonical_title, str) and canonical_title.strip():
+                primary_item["title"] = canonical_title.strip()
+
+            category = cluster.get("category")
+            if category in allowed:
+                primary_item["category"] = category
+
+            final_items.append(primary_item)
+            processed_ids.update(valid_ids)
+
+        # Append any items that were left out of the LLM JSON (safety fallback)
+        for idx, item in enumerate(offer_items):
+            if idx not in processed_ids and not item.get("exclude"):
+                final_items.append(item)
+
+        logger.info(
+            "Brand semantic deduplication: %d raw offers merged into %d canonical promotions",
+            len(offer_items), len(final_items)
+        )
+        return final_items
 
     # ═══════════════════════════════════════════════════════════════════════
     # Gemini Vision call (shared by image + screenshot strategies)
