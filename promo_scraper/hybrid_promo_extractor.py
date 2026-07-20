@@ -458,7 +458,18 @@ class HybridPromoExtractor:
                                     # skipping it and silently losing real, distinct rotating
                                     # promos (as happened with this site's 5-slide carousel,
                                     # where only the currently-active slide was ever captured).
-                                    text = el.inner_text().strip()
+                                    # text = el.inner_text().strip()
+                                    tag = el.evaluate("el => el.tagName.toLowerCase()")
+
+                                    if tag == "img":
+                                        text = (
+                                            el.get_attribute("alt")
+                                            or el.get_attribute("title")
+                                            or ""
+                                        ).strip()
+                                    else:
+                                        text = el.inner_text().strip()
+                                        
                                     if not text:
                                         text = el.text_content().strip()
                                 except Exception:
@@ -1069,19 +1080,22 @@ class HybridPromoExtractor:
             if not isinstance(cluster, dict):
                 continue
 
-            keep = cluster.get("keep")
-            if keep is False:
-                continue
-
             merged_ids = cluster.get("merged_ids", [])
             if not isinstance(merged_ids, list) or not merged_ids:
                 continue
 
-            # Find the primary item to inherit metadata (source_url, brand, confidence, etc.)
             valid_ids = [idx for idx in merged_ids if isinstance(idx, int) and 0 <= idx < len(offer_items)]
             if not valid_ids:
                 continue
 
+            # Always mark IDs as processed by the LLM, even if excluded (keep=False)
+            processed_ids.update(valid_ids)
+
+            keep = cluster.get("keep")
+            if keep is False:
+                continue
+
+            # Find the primary item to inherit metadata (source_url, brand, confidence, etc.)
             primary_idx = valid_ids[0]
             primary_item = dict(offer_items[primary_idx])
 
@@ -1095,7 +1109,6 @@ class HybridPromoExtractor:
                 primary_item["category"] = category
 
             final_items.append(primary_item)
-            processed_ids.update(valid_ids)
 
         # Append any items that were left out of the LLM JSON (safety fallback)
         for idx, item in enumerate(offer_items):
