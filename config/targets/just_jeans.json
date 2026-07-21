@@ -1,20 +1,19 @@
 {
-  "brand": "Gazman",
-  "source_url": "https://www.gazman.com.au/",
+  "brand": "Just Jeans",
+  "source_url": "https://justjeans.jgl.com.au",
   "spider": "image_promo",
   "extraction_strategy": "screenshot",
   "text_selectors": [],
   "screenshot_selectors": [
-    ".mixed-content__block img",
-    "a[href='/collections/sale-pants-jeans'] img"
+    "img[alt*='Final Winter']",
+    "a[href='/shop/jj-new-all'] img"
   ],
   "min_image_width": 400,
   "min_image_height": 150,
-  "min_aspect_ratio": 0.5,
+  "min_aspect_ratio": 1.2,
   "exclude_url_patterns": [
     "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
   ],
-  "request_delay_seconds": 6,
-  "scroll_depth": 5,
-  "enabled": false
+  "request_delay_seconds": 4,
+  "scroll_depth": 3
 }

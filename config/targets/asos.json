@@ -1,13 +1,12 @@
 {
-  "brand": "Rodd & Gunn",
-  "source_url": "https://www.roddandgunn.com/au",
+  "brand": "ASOS",
+  "source_url": "https://www.asos.com/au/women/",
   "spider": "image_promo",
-  "extraction_strategy": "text",
-  "text_selectors": [
-    ".text-overlay2",
-    ".mainHP-heading3"
+  "extraction_strategy": "screenshot",
+  "text_selectors": [],
+  "screenshot_selectors": [
+    "a.hero__link img.hero__image"
   ],
-  "screenshot_selectors": [],
   "min_image_width": 400,
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
@@ -15,6 +14,5 @@
     "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
   ],
   "request_delay_seconds": 4,
-  "scroll_depth": 3,
-  "enabled": false
+  "scroll_depth": 3
 }

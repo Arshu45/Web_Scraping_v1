@@ -1,0 +1,25 @@
+{
+  "brand": "Bonds",
+  "source_url": [
+    "https://www.bonds.com.au/",
+    "https://www.bonds.com.au/sale.html"
+  ],
+  "spider": "image_promo",
+  "extraction_strategy": "hybrid",
+  "text_selectors": [
+    ".single-banner-widget.promotion.quarter"
+  ],
+  "screenshot_selectors": [
+    "a[href*='warehouse-clearance-sale'] img[data-element='desktop_image']",
+    "a[data-id='homepage-unidays-tile'] img",
+    ".category-sale .single-banner-widget.promotion.full img.img-desktop"
+  ],
+  "min_image_width": 400,
+  "min_image_height": 150,
+  "min_aspect_ratio": 1.2,
+  "exclude_url_patterns": [
+    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+  ],
+  "request_delay_seconds": 6,
+  "scroll_depth": 5
+}

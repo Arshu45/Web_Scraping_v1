@@ -1,12 +1,9 @@
 {
-  "brand": "Rodd & Gunn",
-  "source_url": "https://www.roddandgunn.com/au",
+  "brand": "Levi's",
+  "source_url": "https://levis.com.au/",
   "spider": "image_promo",
-  "extraction_strategy": "text",
-  "text_selectors": [
-    ".text-overlay2",
-    ".mainHP-heading3"
-  ],
+  "extraction_strategy": "hybrid",
+  "text_selectors": [],
   "screenshot_selectors": [],
   "min_image_width": 400,
   "min_image_height": 150,
