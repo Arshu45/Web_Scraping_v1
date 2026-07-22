@@ -11,7 +11,8 @@
   ],
   "screenshot_selectors": [
     "div._2023-target-section-heading",
-    "a[title*='clearance']"
+    "a[title*='clearance']",
+    ".SmartHeroBanner-picture"
   ],
   "min_image_width": 400,
   "min_image_height": 150,

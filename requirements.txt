@@ -5,6 +5,7 @@ alembic==1.18.4                 # DB schema migrations
 
 # ── Orchestration ──────────────────────────────────
 prefect==3.6.27                 # Pipeline scheduling & monitoring
+fastapi==0.115.14               # Pinned: newer fastapi/starlette breaks Prefect's embedded server routing
 
 # ── Image-Based Promo Scraper ──────────────────────
 playwright==1.58.0              # Headless browser automation

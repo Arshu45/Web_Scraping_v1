@@ -1,12 +1,12 @@
 {
-  "brand": "Just Jeans",
-  "source_url": "https://justjeans.jgl.com.au",
+  "brand": "Toyworld",
+  "source_url": "https://www.toyworld.com.au/",
   "spider": "image_promo",
   "extraction_strategy": "screenshot",
   "text_selectors": [],
   "screenshot_selectors": [
-    "img[alt*='Final Winter']",
-    "a[href='/shop/jj-new-all'] img"
+    "[data-slide-link='/collections/offers'] img",
+    ".brand-logos__image img"
   ],
   "min_image_width": 400,
   "min_image_height": 150,

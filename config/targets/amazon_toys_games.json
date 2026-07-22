@@ -1,13 +1,10 @@
 {
-  "brand": "Just Jeans",
-  "source_url": "https://justjeans.jgl.com.au",
+  "brand": "Amazon Toys & Games",
+  "source_url": "https://www.amazon.com.au/toys-games/b/?node=4852617051",
   "spider": "image_promo",
   "extraction_strategy": "screenshot",
   "text_selectors": [],
-  "screenshot_selectors": [
-    "img[alt*='Final Winter']",
-    "a[href='/shop/jj-new-all'] img"
-  ],
+  "screenshot_selectors": [],
   "min_image_width": 400,
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,

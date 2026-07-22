@@ -1,13 +1,10 @@
 {
-  "brand": "Just Jeans",
-  "source_url": "https://justjeans.jgl.com.au",
+  "brand": "Ben Sherman",
+  "source_url": "https://www.bensherman.com.au/",
   "spider": "image_promo",
-  "extraction_strategy": "screenshot",
+  "extraction_strategy": "hybrid",
   "text_selectors": [],
-  "screenshot_selectors": [
-    "img[alt*='Final Winter']",
-    "a[href='/shop/jj-new-all'] img"
-  ],
+  "screenshot_selectors": [],
   "min_image_width": 400,
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,

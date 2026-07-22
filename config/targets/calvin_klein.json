@@ -1,13 +1,12 @@
 {
-  "brand": "Just Jeans",
-  "source_url": "https://justjeans.jgl.com.au",
+  "brand": "Calvin Klein",
+  "source_url": "https://www.calvinklein.com.au/",
   "spider": "image_promo",
-  "extraction_strategy": "screenshot",
-  "text_selectors": [],
-  "screenshot_selectors": [
-    "img[alt*='Final Winter']",
-    "a[href='/shop/jj-new-all'] img"
+  "extraction_strategy": "text",
+  "text_selectors": [
+    ".full_width_row_content_no_paddings .mgz-element-text:first-of-type p"
   ],
+  "screenshot_selectors": [],
   "min_image_width": 400,
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,

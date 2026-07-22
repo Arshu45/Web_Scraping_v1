@@ -14,5 +14,6 @@
     "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
   ],
   "request_delay_seconds": 4,
-  "scroll_depth": 3
+  "scroll_depth": 3,
+  "enabled": false
 }
