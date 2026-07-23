@@ -1232,6 +1232,22 @@ class HybridPromoExtractor:
             if not text:
                 continue
 
+            GENERIC_DISCOUNT_PATTERN = re.compile(
+                r"""
+                ^
+                (
+                    \$\d+\s*OFF      |   # $600 OFF
+                    \d+\s*%\s*OFF    |   # 42% OFF
+                    \d+/\d+\s*PRICE      # 1/2 PRICE
+                )
+                $
+                """,
+                re.I | re.X,
+            )
+            
+            if GENERIC_DISCOUNT_PATTERN.match(text):
+                continue
+
             # Reject low-signal labels vision sometimes returns for generic
             # category/nav tiles (e.g. bare "SALE") that carry no actual
             # offer detail (%, $, or a concrete benefit like free shipping)
