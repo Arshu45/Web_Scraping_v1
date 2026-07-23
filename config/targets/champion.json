@@ -1,5 +1,5 @@
 {
-  "brand": "Champion Australia",
+  "brand": "Champion",
   "source_url": "https://www.champion.com.au/",
   "spider": "image_promo",
   "extraction_strategy": "hybrid",

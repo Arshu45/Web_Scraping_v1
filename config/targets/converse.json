@@ -1,5 +1,5 @@
 {
-  "brand": "Converse Australia",
+  "brand": "Converse",
   "source_url": "https://www.converse.com.au/spend-save",
   "spider": "image_promo",
   "extraction_strategy": "hybrid",

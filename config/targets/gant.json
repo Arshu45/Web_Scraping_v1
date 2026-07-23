@@ -1,5 +1,5 @@
 {
-  "brand": "Gant Australia",
+  "brand": "Gant",
   "source_url": "https://gant.com.au/",
   "spider": "image_promo",
   "extraction_strategy": "text",

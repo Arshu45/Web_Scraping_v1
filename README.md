@@ -298,7 +298,7 @@ Each file in `config/targets/` controls how a brand is scraped.
   "exclude_url_patterns": ["/logo", "/icon", "/avatar", "social", "payment"],
   "request_delay_seconds": 3,
   "scroll_depth": 3,
-  "enabled": true
+  "enabled": false
 }
 ```
 

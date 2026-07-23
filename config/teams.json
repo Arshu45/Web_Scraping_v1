@@ -1,7 +1,7 @@
 {
   "Womens (WIFA)": {
     "team_id": "womens_wifa",
-    "categories": ["Womens"],
+    "categories": ["Womens", "Others", "Footwear"],
     "allowed_brands": [
       "David Jones",
       "THE ICONIC",
@@ -30,7 +30,7 @@
   },
   "Kids & Toys": {
     "team_id": "kids_toys_team",
-    "categories": ["Kids", "Toys"],
+    "categories": ["Kids", "Toys", "Others"],
     "allowed_brands": [
       "David Jones",
       "THE ICONIC",
@@ -47,7 +47,7 @@
   },
   "Toys": {
     "team_id": "toys_team",
-    "categories": ["Toys"],
+    "categories": ["Toys", "Others"],
     "allowed_brands": [
       "David Jones",
       "THE ICONIC",
@@ -60,7 +60,7 @@
   },
   "Menswear": {
     "team_id": "menswear_team",
-    "categories": ["Menswear", "Others"],
+    "categories": ["Menswear", "Others","Footwear"],
     "allowed_brands": [
       "David Jones",
       "THE ICONIC",
@@ -69,14 +69,14 @@
       "Ben Sherman",
       "ASOS",
       "Cotton On",
-      "Just Jenes",
+      "Just Jeans",
       "Bonds",
       "Levi's",
       "Ralph Lauren",
       "Rodd & Gunn",
       "Lacoste",
       "Gazman",
-      "GANT",
+      "Gant",
       "Adidas",
       "Champion",
       "PUMA",
@@ -90,7 +90,7 @@
   },
   "Entertainment": {
     "team_id": "entertainment_team",
-    "categories": ["Entertainment"],
+    "categories": ["Entertainment", "Others"],
     "allowed_brands": [
       "JB Hi-Fi",
       "The Good Guys",
@@ -102,7 +102,7 @@
   },
   "Beauty": {
     "team_id": "beauty_team",
-    "categories": ["Beauty"],
+    "categories": ["Beauty", "Others"],
     "allowed_brands": [
       "David Jones",
       "THE ICONIC",
@@ -121,7 +121,7 @@
   },
   "Home": {
     "team_id": "home_team",
-    "categories": ["Home"],
+    "categories": ["Home", "Others"],
     "allowed_brands": [
       "David Jones",
       "Harris Scarfe",

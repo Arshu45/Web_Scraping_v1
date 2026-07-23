@@ -237,7 +237,7 @@ else:
     with col_lbl:
         st.markdown('<div class="section-label" style="margin-top:0; margin-bottom:0;">Weekly Competitor Matrix (Team View)</div>', unsafe_allow_html=True)
     with col_btn:
-        excel_data = export_to_excel(filtered_df)
+        excel_data = export_to_excel(filtered_df, selected_teams, team_map)
         st.download_button(
             label="📥 Export Matrix to Excel",
             data=excel_data,
