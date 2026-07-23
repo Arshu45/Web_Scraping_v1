@@ -56,7 +56,28 @@ class Promotion(Base):
     created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
-    competitor      = relationship("Competitor", back_populates="promotions")
+    competitor       = relationship("Competitor", back_populates="promotions")
+    team_assignments = relationship("PromotionTeamAssignment", back_populates="promotion", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Promotion(id={self.id}, brand='{self.brand}', title='{self.offer_title[:40]}...')>"
+
+
+class PromotionTeamAssignment(Base):
+    """
+    Junction table recording team visibility for promotions.
+    A promotion can be assigned to multiple business teams based on policy rules.
+    """
+    __tablename__ = 'promotion_team_assignments'
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    promotion_id   = Column(Integer, ForeignKey('promotions.id', ondelete='CASCADE'), nullable=False)
+    team_id        = Column(String(50), nullable=False)
+    assigned_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationship
+    promotion      = relationship("Promotion", back_populates="team_assignments")
+
+    def __repr__(self):
+        return f"<PromotionTeamAssignment(promotion_id={self.promotion_id}, team_id='{self.team_id}')>"
+

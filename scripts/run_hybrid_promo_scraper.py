@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.connection import get_session
 from database.models import Competitor, Promotion
 from promo_scraper.hybrid_promo_extractor import HybridPromoExtractor
+from services.team_policy_engine import TeamPolicyEngine
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,6 +39,7 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("hybrid_promo_scraper")
+policy_engine = TeamPolicyEngine()
 
 
 # ── Load Target registry from config ──────────────────────────────────────────
@@ -132,8 +134,9 @@ def _save_offer_items(offer_dicts: list[dict], session) -> tuple[int, int]:
             existing.extraction_confidence = item.get("confidence")
             existing.category              = item.get("category")
             updated += 1
+            promo_obj = existing
         else:
-            session.add(Promotion(
+            promo_obj = Promotion(
                 competitor_id         = competitor.id,
                 brand                 = brand_name,
                 offer_title           = item["title"],
@@ -144,8 +147,13 @@ def _save_offer_items(offer_dicts: list[dict], session) -> tuple[int, int]:
                 offer_hash            = offer_hash,
                 scraped_at            = datetime.now(timezone.utc),
                 created_at            = datetime.now(timezone.utc),
-            ))
+            )
+            session.add(promo_obj)
+            session.flush()
             inserted += 1
+        
+        # Sync team assignment rules
+        policy_engine.sync_promotion_assignments(session, promo_obj)
 
     # Single commit for the entire brand batch
     try:

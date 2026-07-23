@@ -525,17 +525,8 @@ class HybridPromoExtractor:
                 if self.strategy in ("screenshot", "hybrid"):
                     screenshot_selectors = self.cfg.get("screenshot_selectors", [])
                     if not screenshot_selectors:
-                        # Generic default selectors to locate promos/banners
-                        screenshot_selectors = [
-                            "[class*='Hero']", "[class*='hero']",
-                            "[class*='Banner']", "[class*='banner']",
-                            "[class*='Editorial']", "[class*='editorial']",
-                            "[class*='Promo']", "[class*='promo']",
-                            "[class*='Campaign']", "[class*='campaign']",
-                            ".discover-more", ".discover-more-content", ".dm-sale",
-                            "img"
-                        ]
-
+                        logger.info("[%s] No screenshot_selectors specified in config — skipping screenshot extraction.", self.brand)
+                    
                     for frame in page.frames:
                         for selector in screenshot_selectors:
                             try:

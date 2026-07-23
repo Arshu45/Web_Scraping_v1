@@ -73,6 +73,7 @@ class PostgresPipeline:
             existing.scraped_at = datetime.utcnow()
             existing.category = item.get('category')
             self.items_updated += 1
+            promotion = existing
         else:
             # Insert new promotion
             promotion = Promotion(
@@ -87,7 +88,13 @@ class PostgresPipeline:
                 created_at    = datetime.utcnow(),
             )
             self.session.add(promotion)
+            self.session.flush()
             self.items_inserted += 1
+
+        # Sync team assignment rules
+        from services.team_policy_engine import TeamPolicyEngine
+        policy_engine = TeamPolicyEngine()
+        policy_engine.sync_promotion_assignments(self.session, promotion)
 
         try:
             self.session.commit()

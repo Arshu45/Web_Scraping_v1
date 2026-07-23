@@ -1,3 +1,6 @@
+"""
+Exporter utility — generates Excel workbook from filtered promotions DataFrame.
+"""
 import io
 import pandas as pd
 from openpyxl import Workbook
