@@ -1,0 +1,30 @@
+{
+  "brand": "Kitchen Warehouse",
+  "source_url": "https://www.kitchenwarehouse.com.au",
+  "spider": "image_promo",
+  "extraction_strategy": "hybrid",
+  "text_selectors": [
+    "a[href*='wolstead-mineral'] span",
+    ".wolstead-campaign-heading",
+    ".wolstead-campaign-copy"
+  ],
+  "screenshot_selectors": [
+    "img[alt*='Le Creuset']",
+    "img[alt*='30% off']",
+    "img[alt*='Cook\\'s specials']"
+  ],
+  "min_image_width": 400,
+  "min_image_height": 150,
+  "min_aspect_ratio": 1.2,
+  "exclude_url_patterns": [
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
+  ],
+  "request_delay_seconds": 4,
+  "scroll_depth": 3,
+  "enabled": true
+}
