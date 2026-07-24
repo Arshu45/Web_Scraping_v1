@@ -29,6 +29,13 @@ team_map["unassigned"] = "Unassigned / General"
 
 all_team_ids = list(team_map.keys())
 
+# Build once: team_id → configured allowed brands from teams.json
+# Used in both the matrix renderer and Excel exporter.
+allowed_brands_by_team = {
+    t["team_id"]: [b for b in (t.get("allowed_brands") or []) if b]
+    for t in policy_engine.teams
+}
+
 # ── Helpers ──────────────────────────────────────────────────────────
 def render_weekly_matrix(matrix: pd.DataFrame, brand_column: str) -> str:
     """Render the weekly pivot table as a styled HTML table."""
@@ -237,13 +244,13 @@ else:
     with col_lbl:
         st.markdown('<div class="section-label" style="margin-top:0; margin-bottom:0;">Weekly Competitor Matrix (Team View)</div>', unsafe_allow_html=True)
     with col_btn:
-        excel_data = export_to_excel(filtered_df, selected_teams, team_map)
+        excel_data = export_to_excel(filtered_df, selected_teams, team_map, allowed_brands_by_team)
         st.download_button(
             label="📥 Export Matrix to Excel",
             data=excel_data,
             file_name=f"weekly_team_matrix_{datetime.date.today()}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+            width="stretch"
         )
     st.markdown('<div style="margin-top: 0.5rem;"></div>', unsafe_allow_html=True)
 
@@ -252,32 +259,51 @@ else:
     # Render Matrix per Business Team
     for team_id in selected_teams:
         team_name = team_map.get(team_id, team_id)
-        
+
         if team_id == "unassigned":
             team_df = filtered_df[
                 filtered_df["team_ids_str"].apply(lambda s: not s or pd.isna(s) or not str(s).strip())
             ].copy()
+            configured_brands = []  # unassigned has no fixed brand list
         else:
             team_df = filtered_df[
                 filtered_df["team_ids_str"].apply(lambda s: team_id in [t.strip() for t in str(s).split(",") if t.strip()])
             ].copy()
+            configured_brands = allowed_brands_by_team.get(team_id, [])
+
+        # Always render — even if team_df is empty, we still show configured brands
+        brand_column = f"{team_name} Brand"
 
         if team_df.empty:
-            continue
+            # Build an all-empty matrix from configured brands only
+            empty_rows = [{brand_column: brand, **{day: "" for day in weekday_order}} for brand in configured_brands]
+            matrix = pd.DataFrame(empty_rows) if empty_rows else pd.DataFrame(columns=[brand_column] + weekday_order)
+        else:
+            team_df["Day"] = team_df["scraped_at"].dt.day_name()
 
-        team_df["Day"] = team_df["scraped_at"].dt.day_name()
+            grouped = (
+                team_df.groupby(["brand", "Day"])["offer_title"]
+                .apply(lambda values: "\n".join(dict.fromkeys(v for v in values if isinstance(v, str) and v.strip())))
+                .reset_index()
+            )
+            matrix = grouped.pivot(index="brand", columns="Day", values="offer_title")
+            matrix = matrix.reindex(columns=weekday_order).fillna("")
+            matrix = matrix.reset_index().rename(columns={"brand": brand_column})
 
-        grouped = (
-            team_df.groupby(["brand", "Day"])["offer_title"]
-            .apply(lambda values: "\n".join(dict.fromkeys(v for v in values if isinstance(v, str) and v.strip())))
-            .reset_index()
-        )
-        matrix = grouped.pivot(index="brand", columns="Day", values="offer_title")
-        matrix = matrix.reindex(columns=weekday_order).fillna("")
-        matrix = matrix.reset_index().rename(columns={"brand": f"{team_name} Brand"})
+            # Inject any configured brands that had zero scraped offers this period
+            scraped_brands = set(matrix[brand_column].tolist())
+            missing_brands = [b for b in configured_brands if b not in scraped_brands]
+            if missing_brands:
+                missing_rows = pd.DataFrame(
+                    [{brand_column: brand, **{day: "" for day in weekday_order}} for brand in missing_brands]
+                )
+                matrix = pd.concat([matrix, missing_rows], ignore_index=True)
+
+        # Sort brands alphabetically for consistent display
+        matrix = matrix.sort_values(brand_column).reset_index(drop=True)
 
         n_brands = matrix.shape[0]
-        n_promos = team_df["offer_title"].nunique()
+        n_promos = team_df["offer_title"].nunique() if not team_df.empty else 0
 
         # Team feed header badge
         st.markdown(f"""
@@ -289,7 +315,7 @@ else:
         """, unsafe_allow_html=True)
 
         with st.expander(f"View {team_name} Matrix", expanded=True):
-            st.markdown(render_weekly_matrix(matrix, f"{team_name} Brand"), unsafe_allow_html=True)
+            st.markdown(render_weekly_matrix(matrix, brand_column), unsafe_allow_html=True)
 
 st.markdown("<hr>", unsafe_allow_html=True)
 

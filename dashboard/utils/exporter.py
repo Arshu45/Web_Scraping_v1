@@ -56,6 +56,7 @@ def export_to_excel(
     df: pd.DataFrame,
     selected_team_ids: Sequence[str] | None = None,
     team_map: Mapping[str, str] | None = None,
+    allowed_brands_by_team: Mapping[str, list[str]] | None = None,
 ) -> bytes:
     """
     Exports the filtered promotions DataFrame to an Excel spreadsheet in the
@@ -82,6 +83,7 @@ def export_to_excel(
     team_map.setdefault(UNASSIGNED_TEAM_ID, UNASSIGNED_TEAM_NAME)
 
     matrix_df["Day"] = matrix_df["scraped_at"].dt.day_name()
+    _allowed = dict(allowed_brands_by_team or {})
 
     wb = Workbook()
     ws = wb.active
@@ -117,21 +119,42 @@ def export_to_excel(
     for team_id in selected_team_ids:
         team_name = team_map.get(team_id, team_id)
         team_df = _team_dataframe(matrix_df, team_id)
+        configured_brands = _allowed.get(team_id, [])  # brands from teams.json
+
+        brand_column = f"{team_name} Brand"
+
         if team_df.empty:
+            # All configured brands with zero offers
+            empty_rows = [{brand_column: b, **{d: "" for d in WEEKDAY_ORDER}} for b in configured_brands]
+            matrix = pd.DataFrame(empty_rows) if empty_rows else pd.DataFrame(columns=[brand_column] + WEEKDAY_ORDER)
+        else:
+            # Group duplicates and join with newlines
+            grouped = (
+                team_df.groupby(["brand", "Day"])["offer_title"]
+                .apply(_dedupe_offer_lines)
+                .reset_index()
+            )
+            matrix = grouped.pivot(index="brand", columns="Day", values="offer_title")
+            matrix = matrix.reindex(columns=WEEKDAY_ORDER).fillna("")
+            matrix = matrix.reset_index().rename(columns={"brand": brand_column})
+
+            # Inject configured brands that had zero offers in this period
+            scraped_brands = set(matrix[brand_column].tolist())
+            missing = [b for b in configured_brands if b not in scraped_brands]
+            if missing:
+                missing_rows = pd.DataFrame(
+                    [{brand_column: b, **{d: "" for d in WEEKDAY_ORDER}} for b in missing]
+                )
+                matrix = pd.concat([matrix, missing_rows], ignore_index=True)
+
+        # Sort alphabetically for consistent display
+        matrix = matrix.sort_values(brand_column).reset_index(drop=True)
+
+        if matrix.empty:
             continue
 
-        # Group duplicates and join with newlines
-        grouped = (
-            team_df.groupby(["brand", "Day"])["offer_title"]
-            .apply(_dedupe_offer_lines)
-            .reset_index()
-        )
-        matrix = grouped.pivot(index="brand", columns="Day", values="offer_title")
-        matrix = matrix.reindex(columns=WEEKDAY_ORDER).fillna("")
-        matrix = matrix.reset_index().rename(columns={"brand": f"{team_name} Brand"})
-
         n_brands = matrix.shape[0]
-        n_promos = team_df["offer_title"].nunique()
+        n_promos = team_df["offer_title"].nunique() if not team_df.empty else 0
 
         # 1. Write Team Title Block (Merged Row)
         ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=8)
@@ -149,7 +172,6 @@ def export_to_excel(
         current_row += 1
 
         # 2. Write Weekday Column Headers
-        brand_column = f"{team_name} Brand"
         headers = [brand_column] + WEEKDAY_ORDER
         for col_idx, header in enumerate(headers, start=1):
             cell = ws.cell(row=current_row, column=col_idx)

@@ -89,6 +89,21 @@ _vision_api_lock = threading.Lock()
 _last_vision_api_time = 0.0
 VISION_API_MIN_DELAY = float(os.getenv("VISION_API_MIN_DELAY", "4.5"))
 
+# Compiled once at import — rejects bare discount-amount-only strings
+# that carry no actionable offer context (e.g. "$600 OFF", "42% OFF", "1/2 PRICE").
+GENERIC_DISCOUNT_PATTERN = re.compile(
+    r"""
+    ^
+    (
+        \$\d+\s*OFF      |   # $600 OFF
+        \d+\s*%\s*OFF    |   # 42% OFF
+        \d+/\d+\s*PRICE      # 1/2 PRICE
+    )
+    $
+    """,
+    re.I | re.X,
+)
+
 # Matches rate-limit signals from all supported providers:
 #   - Generic:            429, quota, exhausted
 #   - Claude / Anthropic: overloaded, rate_limit_error, AnthropicError
@@ -1232,19 +1247,6 @@ class HybridPromoExtractor:
             if not text:
                 continue
 
-            GENERIC_DISCOUNT_PATTERN = re.compile(
-                r"""
-                ^
-                (
-                    \$\d+\s*OFF      |   # $600 OFF
-                    \d+\s*%\s*OFF    |   # 42% OFF
-                    \d+/\d+\s*PRICE      # 1/2 PRICE
-                )
-                $
-                """,
-                re.I | re.X,
-            )
-            
             if GENERIC_DISCOUNT_PATTERN.match(text):
                 continue
 
