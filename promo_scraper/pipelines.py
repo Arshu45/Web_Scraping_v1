@@ -69,7 +69,7 @@ class PostgresPipeline:
                 existing.offer_hash = offer_hash
 
         if existing:
-            # Update only the scraped_at timestamp — don't duplicate
+            existing.offer_title = title
             existing.scraped_at = datetime.utcnow()
             existing.category = item.get('category')
             self.items_updated += 1

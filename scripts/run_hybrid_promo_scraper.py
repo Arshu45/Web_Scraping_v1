@@ -130,6 +130,7 @@ def _save_offer_items(offer_dicts: list[dict], session) -> tuple[int, int]:
                 existing.offer_hash = offer_hash
 
         if existing:
+            existing.offer_title           = item["title"]
             existing.scraped_at            = datetime.now(timezone.utc)
             existing.extraction_confidence = item.get("confidence")
             existing.category              = item.get("category")

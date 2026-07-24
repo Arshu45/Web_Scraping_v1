@@ -133,7 +133,7 @@ Do NOT extract:
 
 Return a JSON array only — no explanation, no markdown, no code fences.
 Each element must have exactly these fields:
-  - "promo_text" : the full offer text as it appears in the image
+  - "promo_text" : Read and combine ALL visible text from top to bottom on the image into a single complete offer title. Always include top banner titles/headings (e.g. "Online Warehouse Sale") together with the main discount/price text (e.g. "Prices from $12").
   - "category"   : one reporting category from this list only: {categories}, or null
   - "confidence" : "high", "medium", or "low"
 
