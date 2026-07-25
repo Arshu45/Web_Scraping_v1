@@ -68,10 +68,11 @@ class PostgresPipeline:
                 existing = legacy
                 existing.offer_hash = offer_hash
 
+        cat = item.get('category') or 'Others'
         if existing:
             existing.offer_title = title
             existing.scraped_at = datetime.utcnow()
-            existing.category = item.get('category')
+            existing.category = cat
             self.items_updated += 1
             promotion = existing
         else:
@@ -80,7 +81,7 @@ class PostgresPipeline:
                 competitor_id = competitor.id,
                 brand         = brand_name,
                 offer_title   = title,
-                category      = item.get('category'),
+                category      = cat,
                 source_name   = source_name,
                 source_url    = source_url,
                 offer_hash    = offer_hash,

@@ -134,7 +134,7 @@ Do NOT extract:
 Return a JSON array only — no explanation, no markdown, no code fences.
 Each element must have exactly these fields:
   - "promo_text" : Read and combine ALL visible text from top to bottom on the image into a single complete offer title. Always include top banner titles/headings (e.g. "Online Warehouse Sale") together with the main discount/price text (e.g. "Prices from $12").
-  - "category"   : one reporting category from this list only: {categories}, or null
+  - "category"   : one reporting category from this list only: {categories}. Prioritize matching specific department categories (Home, Entertainment, Womens, Beauty, Kids, Toys, Menswear) if any department keyword or product type is present (e.g. "Clothing & Home" -> "Home"). Use "Others" only for purely general sitewide shipping/newsletter offers. Never return null.
   - "confidence" : "high", "medium", or "low"
 
 If the image contains no promotional text (lifestyle photo, brand logo, product photo), return: []
@@ -367,9 +367,13 @@ class HybridPromoExtractor:
             "estimate, not a billing-accurate figure for every provider."
         )
 
-    def _record_skip(self, reason: str) -> None:
+    def _record_skip(self, reason: str, details: str = "") -> None:
         self._images_skipped += 1
         self._skip_reasons[reason] = self._skip_reasons.get(reason, 0) + 1
+        if details:
+            logger.info("  SKIP [%s]: %s", reason, details)
+        else:
+            logger.debug("  SKIP [%s]", reason)
 
     def _create_stealth_page(self, pw) -> tuple[Any, Any]:
         """Launch browser and context with stealth settings to bypass anti-bot screens."""
@@ -569,7 +573,7 @@ class HybridPromoExtractor:
 
                                 if is_img and img_src:
                                     if any(p in img_src.lower() for p in self.exclude_patterns):
-                                        self._record_skip("excluded_pattern")
+                                        self._record_skip("excluded_pattern", f"URL matched exclude pattern: {img_src[:80]}")
                                         continue
 
                                 # Visibility check
@@ -606,7 +610,7 @@ class HybridPromoExtractor:
                                             ss_bytes = base64.b64decode(image_b64)
                                         except Exception as e:
                                             logger.debug("Failed to fetch image bytes via frame fetch: %s", e)
-                                            self._record_skip("fetch_failed")
+                                            self._record_skip("fetch_failed", f"Failed frame fetch for {img_src[:80]}")
                                             continue
                                 else:
                                     # For non-img elements (containers, divs), they MUST be visible
@@ -615,7 +619,7 @@ class HybridPromoExtractor:
                                     try:
                                         ss_bytes = el.screenshot()
                                     except Exception:
-                                        self._record_skip("fetch_failed")
+                                        self._record_skip("fetch_failed", f"Screenshot failed for element {selector}")
                                         continue
 
                                 if not ss_bytes:
@@ -624,6 +628,7 @@ class HybridPromoExtractor:
                                 # Deduplicate identical screenshots
                                 ss_hash = hashlib.sha256(ss_bytes).hexdigest()
                                 if ss_hash in seen_hashes:
+                                    logger.debug("Skipping duplicate image hash: %s", ss_hash[:12])
                                     continue
                                 seen_hashes.add(ss_hash)
 
@@ -631,13 +636,13 @@ class HybridPromoExtractor:
                                 try:
                                     img = Image.open(BytesIO(ss_bytes))
                                     if img.width < self.min_width or img.height < self.min_height:
-                                        self._record_skip("too_small")
+                                        self._record_skip("too_small", f"Dimensions {img.width}x{img.height} below min {self.min_width}x{self.min_height} ({selector})")
                                         continue
                                     if img.width > 0 and (img.width / max(img.height, 1)) < self.min_aspect:
-                                        self._record_skip("bad_aspect")
+                                        self._record_skip("bad_aspect", f"Aspect ratio {img.width/max(img.height,1):.2f} below min {self.min_aspect} ({selector})")
                                         continue
                                 except Exception:
-                                    self._record_skip("unreadable_image")
+                                    self._record_skip("unreadable_image", f"Unreadable image bytes ({selector})")
                                     continue
 
                                 self._images_found += 1
@@ -648,14 +653,14 @@ class HybridPromoExtractor:
 
                                 offers = self._vision_extract_cached(ss_bytes, "image/png", label, content_hash=ss_hash)
                                 if offers is None:
-                                    self._record_skip("unparsable_response")
+                                    self._record_skip("unparsable_response", f"Vision LLM returned unparsable response ({label})")
                                 elif offers:
                                     items = self._build_offer_items(offers, label)
                                     offer_items.extend(items)
                                     self._images_processed += 1
                                     logger.info("  SHOT  %d offers from selector '%s'", len(items), selector)
                                 else:
-                                    self._record_skip("no_offers_found")
+                                    self._record_skip("no_offers_found", f"Vision LLM returned 0 offers for image ({selector})")
 
             except PWTimeout:
                 logger.error("Playwright timed out loading %s", self.source_url)
@@ -1053,7 +1058,9 @@ class HybridPromoExtractor:
             "     * Remove CTA clutter like 'Shop now', '*Terms apply', 'While stocks last', ticket symbols (¤), or raw UI button text.\n\n"
             "3. CATEGORIZATION:\n"
             f"   - Assign exactly one category from this list only: {self.category_list_text}.\n"
-            "   - Use promo text, brand, and source_url as strong evidence.\n\n"
+            "   - Use promo text, brand, and source_url as strong evidence.\n"
+            "   - PRIORITIZE DEPARTMENT MATCHING: Always prefer assigning a specific department category (Home, Entertainment, Womens, Beauty, Kids, Toys, Menswear, Footwear) whenever ANY department keyword, product type, or brand context is present (e.g., 'Clothing & Home Clearance' -> 'Home', 'Pyjamas' -> 'Womens', 'Laptops/TVs/Tech' -> 'Entertainment', 'Shirts' -> 'Menswear'). Even for multi-department sales (e.g. 'Clothing, footwear and home'), assign it to one of the named department categories (such as 'Home') rather than 'Others'.\n"
+            "   - Only assign 'Others' if the promotion is purely generic with NO department or product context whatsoever (e.g., 'Free shipping over $100', '10% off first order', 'Sign up for newsletter'). NEVER return null, empty, or unlisted category names.\n\n"
             "Return JSON only as a list of objects:\n"
             "[\n"
             "  {\n"
@@ -1101,7 +1108,9 @@ class HybridPromoExtractor:
             processed_ids.update(valid_ids)
 
             keep = cluster.get("keep")
+            raw_titles = [offer_items[i].get("title", "") for i in valid_ids if i < len(offer_items)]
             if keep is False:
+                logger.info("  FILTERED OUT (LLM policy keep=False): %s -> Cluster Title: '%s'", raw_titles, cluster.get("canonical_title"))
                 continue
 
             # Find the primary item to inherit metadata (source_url, brand, confidence, etc.)
@@ -1116,13 +1125,23 @@ class HybridPromoExtractor:
             category = cluster.get("category")
             if category in allowed:
                 primary_item["category"] = category
+            elif not primary_item.get("category") or primary_item.get("category") not in allowed:
+                primary_item["category"] = self.target_config.get("category") or "Others"
 
+            logger.info("  KEPT & CANONICALIZED: '%s' (Category: %s) [Merged %d raw offer(s): %s]", primary_item["title"], primary_item["category"], len(valid_ids), raw_titles)
             final_items.append(primary_item)
 
         # Append any items that were left out of the LLM JSON (safety fallback)
         for idx, item in enumerate(offer_items):
             if idx not in processed_ids and not item.get("exclude"):
+                if not item.get("category") or item.get("category") not in allowed:
+                    item["category"] = self.target_config.get("category") or "Others"
                 final_items.append(item)
+
+        # Final safety guarantee: no item ever has category=None or unlisted category
+        for item in final_items:
+            if not item.get("category") or item.get("category") not in allowed:
+                item["category"] = self.target_config.get("category") or "Others"
 
         logger.info(
             "Brand semantic deduplication: %d raw offers merged into %d canonical promotions",

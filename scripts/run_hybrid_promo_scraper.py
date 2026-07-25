@@ -129,11 +129,12 @@ def _save_offer_items(offer_dicts: list[dict], session) -> tuple[int, int]:
                 existing = legacy
                 existing.offer_hash = offer_hash
 
+        cat = item.get("category") or "Others"
         if existing:
             existing.offer_title           = item["title"]
             existing.scraped_at            = datetime.now(timezone.utc)
             existing.extraction_confidence = item.get("confidence")
-            existing.category              = item.get("category")
+            existing.category              = cat
             updated += 1
             promo_obj = existing
         else:
@@ -141,7 +142,7 @@ def _save_offer_items(offer_dicts: list[dict], session) -> tuple[int, int]:
                 competitor_id         = competitor.id,
                 brand                 = brand_name,
                 offer_title           = item["title"],
-                category              = item.get("category"),
+                category              = cat,
                 source_name           = item["source"],
                 source_url            = item.get("source_url"),
                 extraction_confidence = item.get("confidence"),
