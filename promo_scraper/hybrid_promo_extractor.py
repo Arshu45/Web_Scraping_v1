@@ -701,24 +701,28 @@ class HybridPromoExtractor:
 
         offer_items: list[dict] = []
 
-        for url in image_urls:
-            if self._gemini_api_calls > 0:
-                time.sleep(self.delay)
+        # Reuse a single HTTP client for all downloads — enables connection
+        # pooling and HTTP/2 multiplexing instead of a fresh TCP+TLS
+        # handshake per image.
+        with httpx.Client(timeout=15, follow_redirects=True, http2=True) as http_client:
+            for url in image_urls:
+                if self._gemini_api_calls > 0:
+                    time.sleep(self.delay)
 
-            img_bytes, mime = self._download_image(url)
-            if img_bytes is None:
-                continue  # _download_image already recorded the specific skip reason
+                img_bytes, mime = self._download_image(url, client=http_client)
+                if img_bytes is None:
+                    continue  # _download_image already recorded the specific skip reason
 
-            content_hash = hashlib.sha256(img_bytes).hexdigest()
-            offers = self._vision_extract_cached(img_bytes, mime, url, content_hash=content_hash)
-            if offers is None:
-                self._record_skip("unparsable_response")
-            elif offers:
-                offer_items.extend(self._build_offer_items(offers, url))
-                self._images_processed += 1
-                logger.info("  IMG  %d offers from %s", len(offers), url)
-            else:
-                self._record_skip("no_offers_found")
+                content_hash = hashlib.sha256(img_bytes).hexdigest()
+                offers = self._vision_extract_cached(img_bytes, mime, url, content_hash=content_hash)
+                if offers is None:
+                    self._record_skip("unparsable_response")
+                elif offers:
+                    offer_items.extend(self._build_offer_items(offers, url))
+                    self._images_processed += 1
+                    logger.info("  IMG  %d offers from %s", len(offers), url)
+                else:
+                    self._record_skip("no_offers_found")
 
         return offer_items
 
@@ -764,10 +768,7 @@ class HybridPromoExtractor:
         urls: list[str] = []
 
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
-            page = browser.new_context(
-                user_agent=_UA, viewport={"width": 1920, "height": 1080}
-            ).new_page()
+            browser, page = self._create_stealth_page(pw)
             try:
                 self._goto_with_retry(page, self.source_url)
                 self._wait_and_scroll(page)
@@ -862,22 +863,27 @@ class HybridPromoExtractor:
         """
         Enforce the minimum delay between dispatches (not completions).
 
-        The global _vision_api_lock protects ONLY the timestamp read/write
-        (a microsecond operation); the actual API call runs OUTSIDE the lock
-        so other threads aren't blocked on network latency. The timestamp is
-        written BEFORE the lock is released so a burst of threads can't all
-        read a stale timestamp and fire simultaneously the moment the delay
-        expires.
+        The lock protects ONLY the timestamp read/write (a microsecond
+        operation).  Each thread claims the next available dispatch slot by
+        advancing _last_vision_api_time inside the lock, then sleeps
+        OUTSIDE the lock until its slot arrives.  This way concurrent
+        threads are staggered by VISION_API_MIN_DELAY without serializing
+        behind each other's sleep calls.
         """
         global _last_vision_api_time
+        sleep_time = 0.0
         with _vision_api_lock:
             now = time.time()
-            elapsed = now - _last_vision_api_time
-            if elapsed < VISION_API_MIN_DELAY:
-                sleep_time = VISION_API_MIN_DELAY - elapsed
-                logger.debug("Vision API rate gate: sleeping %.2fs", sleep_time)
-                time.sleep(sleep_time)
-            _last_vision_api_time = time.time()
+            # The earliest this thread may fire is the later of "now" and
+            # "last dispatch + minimum delay".
+            earliest = max(now, _last_vision_api_time + VISION_API_MIN_DELAY)
+            sleep_time = earliest - now
+            # Claim this slot so the next thread sees it.
+            _last_vision_api_time = earliest
+
+        if sleep_time > 0:
+            logger.debug("Vision API rate gate: sleeping %.2fs", sleep_time)
+            time.sleep(sleep_time)
 
     @retry(
         stop=stop_after_attempt(5),
@@ -1126,7 +1132,7 @@ class HybridPromoExtractor:
             if category in allowed:
                 primary_item["category"] = category
             elif not primary_item.get("category") or primary_item.get("category") not in allowed:
-                primary_item["category"] = self.target_config.get("category") or "Others"
+                primary_item["category"] = self.cfg.get("category") or "Others"
 
             logger.info("  KEPT & CANONICALIZED: '%s' (Category: %s) [Merged %d raw offer(s): %s]", primary_item["title"], primary_item["category"], len(valid_ids), raw_titles)
             final_items.append(primary_item)
@@ -1135,13 +1141,13 @@ class HybridPromoExtractor:
         for idx, item in enumerate(offer_items):
             if idx not in processed_ids and not item.get("exclude"):
                 if not item.get("category") or item.get("category") not in allowed:
-                    item["category"] = self.target_config.get("category") or "Others"
+                    item["category"] = self.cfg.get("category") or "Others"
                 final_items.append(item)
 
         # Final safety guarantee: no item ever has category=None or unlisted category
         for item in final_items:
             if not item.get("category") or item.get("category") not in allowed:
-                item["category"] = self.target_config.get("category") or "Others"
+                item["category"] = self.cfg.get("category") or "Others"
 
         logger.info(
             "Brand semantic deduplication: %d raw offers merged into %d canonical promotions",
@@ -1224,11 +1230,15 @@ class HybridPromoExtractor:
     # Image download (image strategy only)
     # ═══════════════════════════════════════════════════════════════════════
 
-    def _download_image(self, url: str) -> tuple[bytes | None, str]:
+    def _download_image(self, url: str, *, client: httpx.Client | None = None) -> tuple[bytes | None, str]:
         """Download image bytes. Returns (bytes, mime) or (None, '')."""
         try:
-            with httpx.Client(timeout=15, follow_redirects=True) as client:
+            if client is not None:
                 r = client.get(url, headers={"User-Agent": _UA, "Referer": self.source_url})
+            else:
+                # Fallback: one-off client for standalone calls
+                with httpx.Client(timeout=15, follow_redirects=True) as fallback:
+                    r = fallback.get(url, headers={"User-Agent": _UA, "Referer": self.source_url})
             r.raise_for_status()
             ct = r.headers.get("content-type", "")
             if "image" not in ct:

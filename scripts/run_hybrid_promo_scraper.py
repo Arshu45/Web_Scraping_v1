@@ -117,14 +117,33 @@ def _save_offer_items(offer_dicts: list[dict], session) -> tuple[int, int]:
         logger.info("Auto-created competitor '%s' in DB", brand_name)
 
     scraped_date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Pre-compute all hashes so we can batch-fetch existing promotions in
+    # a single query instead of 2 SELECTs per item (N+1 → 1).
+    item_hashes = []
     for item in offer_dicts:
         source_url = item.get("source_url")
-        offer_hash = _make_offer_hash(item["source"], brand_name, item["title"], source_url, scraped_date_str)
+        new_hash = _make_offer_hash(item["source"], brand_name, item["title"], source_url, scraped_date_str)
+        legacy_hash = _make_legacy_offer_hash(item["source"], brand_name, item["title"])
+        item_hashes.append((new_hash, legacy_hash, source_url))
 
-        existing = session.query(Promotion).filter_by(offer_hash=offer_hash).first()
+    all_hashes = set()
+    for new_h, legacy_h, _ in item_hashes:
+        all_hashes.add(new_h)
+        all_hashes.add(legacy_h)
+
+    # Single query: fetch all promotions whose offer_hash matches any of our hashes.
+    existing_promos = (
+        session.query(Promotion)
+        .filter(Promotion.offer_hash.in_(all_hashes))
+        .all()
+    )
+    promo_by_hash = {p.offer_hash: p for p in existing_promos}
+
+    for item, (offer_hash, legacy_hash, source_url) in zip(offer_dicts, item_hashes):
+        existing = promo_by_hash.get(offer_hash)
         if not existing:
-            legacy_hash = _make_legacy_offer_hash(item["source"], brand_name, item["title"])
-            legacy = session.query(Promotion).filter_by(offer_hash=legacy_hash).first()
+            legacy = promo_by_hash.get(legacy_hash)
             if legacy and legacy.source_url == source_url:
                 existing = legacy
                 existing.offer_hash = offer_hash
@@ -157,7 +176,8 @@ def _save_offer_items(offer_dicts: list[dict], session) -> tuple[int, int]:
         # Sync team assignment rules
         policy_engine.sync_promotion_assignments(session, promo_obj)
 
-    # Single commit for the entire brand batch
+    # Single commit for the entire brand batch — re-raise on failure
+    # so the caller knows no data was persisted.
     try:
         session.commit()
     except Exception as e:
@@ -166,6 +186,7 @@ def _save_offer_items(offer_dicts: list[dict], session) -> tuple[int, int]:
             "Batch DB commit failed for brand '%s' (%d offers): %s",
             brand_name, len(offer_dicts), e,
         )
+        raise
 
     return inserted, updated
 
@@ -190,7 +211,11 @@ def scrape_single_target(target: dict) -> dict:
         items     = summary.pop("offer_items", [])
 
         if items:
-            inserted, updated = _save_offer_items(items, session)
+            try:
+                inserted, updated = _save_offer_items(items, session)
+            except Exception as db_err:
+                logger.error("%s — DB save failed, 0 offers stored: %s", brand, db_err)
+                inserted = updated = 0
             summary["offers_stored"] = inserted + updated
             logger.info(
                 "%s — Inserted: %d  |  Updated: %d  |  Cost: $%.6f",
@@ -203,9 +228,11 @@ def scrape_single_target(target: dict) -> dict:
         return summary
 
     except EnvironmentError as e:
+        session.rollback()
         logger.critical(str(e))
         raise
     except Exception as e:
+        session.rollback()
         logger.error("Failed to process '%s': %s", brand, e, exc_info=True)
         return {"brand": brand, "error": str(e)}
     finally:

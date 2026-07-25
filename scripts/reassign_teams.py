@@ -29,19 +29,29 @@ def reassign_all():
     engine = TeamPolicyEngine()
     logger.info("Loaded %d team configurations.", len(engine.teams))
 
+    BATCH_SIZE = 200
+
     session = get_session()
     try:
-        promotions = session.query(Promotion).all()
-        total = len(promotions)
+        total = session.query(Promotion).count()
         logger.info("Found %d promotions to reassign.", total)
 
         reassigned = 0
-        for i, promo in enumerate(promotions, start=1):
+        # Stream rows in server-side chunks instead of loading the entire
+        # table into memory.  yield_per() keeps at most BATCH_SIZE ORM
+        # objects hydrated at a time.
+        query = session.query(Promotion).yield_per(BATCH_SIZE)
+        for i, promo in enumerate(query, start=1):
             team_ids = engine.sync_promotion_assignments(session, promo)
             reassigned += 1
-            if i % 50 == 0 or i == total:
+
+            # Periodic commit to flush pending DELETEs/INSERTs from
+            # sync_promotion_assignments and keep the session lean.
+            if i % BATCH_SIZE == 0:
+                session.commit()
                 logger.info("  Progress: %d / %d (last: %s → teams: %s)", i, total, promo.brand, team_ids or "unassigned")
 
+        # Final commit for the remaining rows
         session.commit()
         logger.info("✅ Done. Reassigned %d promotions.", reassigned)
 

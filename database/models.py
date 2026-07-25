@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Column, Integer, String, Text,
     Boolean, DateTime, ForeignKey
@@ -18,8 +18,8 @@ class Competitor(Base):
     id          = Column(Integer, primary_key=True, autoincrement=True)
     name        = Column(String(100), unique=True, nullable=False)
     enabled     = Column(Boolean, default=True, nullable=False)
-    added_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
-    modified_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    added_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    modified_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     promotions  = relationship("Promotion", back_populates="competitor", cascade="all, delete-orphan")
@@ -53,7 +53,7 @@ class Promotion(Base):
 
     # Timestamps
     scraped_at      = Column(DateTime, nullable=False)
-    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
     competitor       = relationship("Competitor", back_populates="promotions")
@@ -73,7 +73,7 @@ class PromotionTeamAssignment(Base):
     id             = Column(Integer, primary_key=True, autoincrement=True)
     promotion_id   = Column(Integer, ForeignKey('promotions.id', ondelete='CASCADE'), nullable=False)
     team_id        = Column(String(50), nullable=False)
-    assigned_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    assigned_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationship
     promotion      = relationship("Promotion", back_populates="team_assignments")

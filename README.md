@@ -235,6 +235,12 @@ PROMO_CATEGORIES="Home, Entertainment, Womens, Beauty, Kids, Toys, Menswear, Foo
 
 MAX_CONCURRENT_BROWSERS=3
 VISION_API_MIN_DELAY=1.0
+
+# Cost estimate rate for Vision API calls (order-of-magnitude, not billing-accurate)
+VISION_COST_PER_MILLION_TOKENS_USD=1.00
+
+# Dashboard rolling window (days of history to load on startup)
+DASHBOARD_LOOKBACK_DAYS=90
 ```
 
 ### 3. Initialize the Database
@@ -311,22 +317,25 @@ Each file in `config/targets/` controls how a brand is scraped.
 Promotions are fingerprinted using:
 
 ```text
-SHA-256(source_name + brand + source_url + offer_title)
+SHA-256(source_name + brand + source_url + offer_title + scraped_date)
 ```
 
 Identical offer text on different pages (e.g. `/men/` vs `/kids/`) is stored as separate rows.
+The date component ensures the same offer is re-recorded daily for timeline tracking.
 
 ---
 
 ## LLM Cost Tracking
 
-Each scrape reports cumulative API cost via the LiteLLM proxy. For Claude Haiku 4.5 the estimate uses:
+Each scrape reports cumulative API cost. The estimate uses the model configured via `VISION_LLM_MODEL` (default: Gemini 2.5 Flash for direct, or any model via LiteLLM gateway):
 
 ```text
-USD 1.00 per 1M input tokens
+USD per 1M input tokens (configurable via VISION_COST_PER_MILLION_TOKENS_USD, default 1.00)
 image_tokens ≈ (width × height / 800) + 170
 text_tokens  ≈ characters / 4
 ```
+
+This is an order-of-magnitude estimate, not a billing-accurate figure.
 
 ---
 

@@ -1,12 +1,13 @@
 import hashlib
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from database.connection import get_session
 from database.models import Competitor, Promotion
+from services.team_policy_engine import TeamPolicyEngine
 
 
 def make_offer_hash(source: str, brand: str, title: str, source_url: str | None = None, date_str: str = "") -> str:
@@ -31,6 +32,7 @@ class PostgresPipeline:
 
     def open_spider(self, spider):
         self.session = get_session()
+        self.policy_engine = TeamPolicyEngine()
         self.items_scraped = 0
         self.items_inserted = 0
         self.items_updated = 0
@@ -55,7 +57,7 @@ class PostgresPipeline:
             return item
 
         # 2. Generate deduplication hash
-        scraped_date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        scraped_date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         offer_hash = make_offer_hash(source_name, brand_name, title, source_url, scraped_date_str)
 
 
@@ -71,7 +73,7 @@ class PostgresPipeline:
         cat = item.get('category') or 'Others'
         if existing:
             existing.offer_title = title
-            existing.scraped_at = datetime.utcnow()
+            existing.scraped_at = datetime.now(timezone.utc)
             existing.category = cat
             self.items_updated += 1
             promotion = existing
@@ -85,28 +87,34 @@ class PostgresPipeline:
                 source_name   = source_name,
                 source_url    = source_url,
                 offer_hash    = offer_hash,
-                scraped_at    = datetime.utcnow(),
-                created_at    = datetime.utcnow(),
+                scraped_at    = datetime.now(timezone.utc),
+                created_at    = datetime.now(timezone.utc),
             )
             self.session.add(promotion)
             self.session.flush()
             self.items_inserted += 1
 
         # Sync team assignment rules
-        from services.team_policy_engine import TeamPolicyEngine
-        policy_engine = TeamPolicyEngine()
-        policy_engine.sync_promotion_assignments(self.session, promotion)
-
-        try:
-            self.session.commit()
-        except Exception as e:
-            self.session.rollback()
-            spider.logger.error(f"DB commit failed for item '{title[:50]}': {e}")
+        self.policy_engine.sync_promotion_assignments(self.session, promotion)
 
         return item
 
     def close_spider(self, spider):
-        self.session.close()
+        # Single batch commit for all items — 10-50× faster than per-row commits.
+        try:
+            self.session.commit()
+        except Exception as e:
+            self.session.rollback()
+            spider.logger.error(
+                "Batch DB commit failed (%d items): %s",
+                self.items_scraped, e,
+            )
+            # Reset counts since nothing was persisted
+            self.items_inserted = 0
+            self.items_updated = 0
+        finally:
+            self.session.close()
+
         spider.logger.info(
             f"PostgresPipeline closed. "
             f"Scraped={self.items_scraped}, "
