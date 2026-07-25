@@ -68,7 +68,7 @@ from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_message,
+    retry_if_exception,
     before_sleep_log,
 )
 
@@ -108,15 +108,42 @@ GENERIC_DISCOUNT_PATTERN = re.compile(
 #   - Generic:            429, quota, exhausted
 #   - Claude / Anthropic: overloaded, rate_limit_error, AnthropicError
 #   - LiteLLM gateway:    RateLimitError, litellm.RateLimitError
-_RATE_LIMIT_PATTERN = (
-    r".*429.*"
-    r"|.*quota.*"
-    r"|.*exhausted.*"
-    r"|.*overloaded.*"
-    r"|.*rate.?limit.*"
-    r"|.*AnthropicError.*"
-    r"|.*litellm\.RateLimit.*"
+_RATE_LIMIT_PATTERN = re.compile(
+    r"429|quota|exhausted|overloaded|rate.?limit|resource_exhausted|too_many_requests|AnthropicError",
+    re.IGNORECASE,
 )
+
+
+def _is_rate_limit_or_transient_error(exc: Exception) -> bool:
+    """
+    Predicate for tenacity retry in _call_llm.
+    Checks HTTP status codes (429, 502, 503, 504, 529), exception class names
+    (RateLimit, ResourceExhausted, etc.), wrapped response objects, and
+    regex message matching across LiteLLM, direct Gemini, and HTTP clients.
+    """
+    if exc is None:
+        return False
+
+    # 1. Check direct status code attributes
+    for attr in ("status_code", "status", "code", "http_status"):
+        val = getattr(exc, attr, None)
+        if isinstance(val, int) and val in (429, 502, 503, 504, 529):
+            return True
+
+    # 2. Check wrapped response object (e.g. httpx.HTTPStatusError)
+    response = getattr(exc, "response", None)
+    if response is not None:
+        status_code = getattr(response, "status_code", None)
+        if isinstance(status_code, int) and status_code in (429, 502, 503, 504, 529):
+            return True
+
+    # 3. Check exception class hierarchy and type name
+    exc_type_str = f"{type(exc).__module__}.{type(exc).__name__}"
+    if any(name in exc_type_str for name in ("RateLimit", "ResourceExhausted", "TooManyRequests", "Overloaded")):
+        return True
+
+    # 4. Fallback: string regex match on exception representation
+    return bool(_RATE_LIMIT_PATTERN.search(str(exc)))
 
 
 # ── Gemini Vision prompt ────────────────────────────────────────────────────
@@ -696,8 +723,8 @@ class HybridPromoExtractor:
     def _run_image(self) -> list[dict]:
         """Original strategy: collect img src URLs → download → Gemini Vision."""
         image_urls = self._collect_image_urls()
-        self._images_found = len(image_urls)
-        logger.info("Image strategy: %d candidate URLs", self._images_found)
+        self._images_found += len(image_urls)
+        logger.info("Image strategy: %d candidate URLs found for %s", len(image_urls), self.source_url)
 
         offer_items: list[dict] = []
 
@@ -888,7 +915,7 @@ class HybridPromoExtractor:
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=2, min=5, max=70),
-        retry=retry_if_exception_message(match=_RATE_LIMIT_PATTERN),
+        retry=retry_if_exception(_is_rate_limit_or_transient_error),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
