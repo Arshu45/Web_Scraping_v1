@@ -4,10 +4,14 @@
     "categories": ["Womens", "Others", "Footwear"],
     "allowed_brands": {
       "David Jones": {},
-      "The Iconic": {},
+      "The Iconic": {
+        "categories": ["Womens", "Others"]
+      },
       "Country Road": {},
       "Witchery": {},
-      "Forever New": {},
+      "Forever New": {
+        "categories": ["Womens"]
+      },
       "Seed Heritage": {},
       "Taking Shape": {},
       "Levi's": {},
@@ -16,7 +20,9 @@
       "Review": {},
       "Cue": {},
       "Veronika Maine": {},
-      "Converse": {},
+      "Converse": {
+        "categories": ["Footwear"]
+      },
       "Skechers": {},
       "Shoe hq": {},
       "Tommy Hilfiger": {},
@@ -33,62 +39,102 @@
   "Kids & Toys": {
     "team_id": "kids_toys_team",
     "categories": ["Kids", "Toys", "Others"],
-    "allowed_brands": [
-      "David Jones",
-      "THE ICONIC",
-      "K Mart",
-      "BIG W",
-      "Target",
-      "Cotton On",
-      "H&M",
-      "Bonds",
-      "Uniqlo",
-      "Best and less",
-      "Next Australia"
-    ]
+    "allowed_brands": {
+      "David Jones": {},
+      "The Iconic": {
+        "categories": ["Kids", "Toys", "Others"]
+      },
+      "K Mart": {},
+      "H&M": {},
+      "BIG W": {
+        "categories": ["Kids", "Toys", "Others"]
+      },
+      "Target": {
+        "categories": ["Kids", "Toys", "Others"]
+      },
+      "Cotton On": {
+        "categories": ["Kids", "Toys"]
+      },
+      "Bonds": {
+        "categories": ["Kids", "Toys", "Others"]
+      },
+      "Uniqlo": {},
+      "Best and less": {},
+      "Next Australia": {}
+    }
   },
   "Toys": {
     "team_id": "toys_team",
     "categories": ["Toys", "Others"],
-    "allowed_brands": [
-      "David Jones",
-      "THE ICONIC",
-      "K Mart",
-      "BIG W",
-      "Target",
-      "Amazon Toys & Games",
-      "Toyworld"
-    ]
+    "allowed_brands": {
+      "David Jones": {},
+      "The Iconic": {
+        "categories": ["Toys"]
+      },
+      "K Mart": {},
+      "BIG W": {
+        "categories": ["Toys"]
+      },
+      "Target": {
+        "categories": ["Toys"]
+      },
+      "Amazon Toys & Games": {
+        "categories": ["Toys", "Others"]
+      },
+      "Toyworld": {
+        "categories": ["Toys", "Others"]
+      }
+    }
   },
   "Menswear": {
     "team_id": "menswear_team",
     "categories": ["Menswear", "Others","Footwear"],
-    "allowed_brands": [
-      "David Jones",
-      "THE ICONIC",
-      "Tommy Hilfiger",
-      "Calvin Klein",
-      "Ben Sherman",
-      "ASOS",
-      "Cotton On",
-      "Just Jeans",
-      "Bonds",
-      "Levi's",
-      "Ralph Lauren",
-      "Rodd & Gunn",
-      "Lacoste",
-      "Gazman",
-      "Gant",
-      "Adidas",
-      "Champion",
-      "PUMA",
-      "Van Heusen",
-      "Oxford Shop",
-      "Jack & Jones",
-      "Superdry",
-      "Wild Rhino",
-      "American Eagle"
-    ]
+    "allowed_brands": {
+      "David Jones": {},
+      "The Iconic": {
+        "categories": ["Menswear", "Footwear", "Others"]
+      },
+      "Tommy Hilfiger": {
+        "categories": ["Menswear"]
+      },
+      "Calvin Klein": {},
+      "Ben Sherman": {},
+      "ASOS": {},
+      "Cotton On": {
+        "categories": ["Menswear", "Others"]
+      },
+      "Just Jeans": {
+        "categories": ["Menswear"]
+      },
+      "Bonds": {
+        "categories": ["Menswear", "Others"]
+      },
+      "Levi's": {},
+      "Ralph Lauren": {},
+      "Rodd & Gunn": {},
+      "Lacoste": {},
+      "Gazman": {},
+      "Gant": {},
+      "Adidas": {},
+      "Champion": {
+        "categories": ["Menswear"]
+      },
+      "Puma": {},
+      "Van Heusen": {
+        "categories": ["Menswear"]
+      },
+      "Oxford Shop": {
+        "categories": ["Menswear", "Others"]
+      },
+      "Jack & Jones": {},
+      "Superdry": {
+        "categories": ["Menswear"]
+      },
+      "Wild Rhino": {},
+      "American Eagle": {
+        "categories": ["Menswear"]
+      }
+    }
   },
   "Entertainment": {
     "team_id": "entertainment_team",
