@@ -348,17 +348,33 @@ class HybridPromoExtractor:
 
             all_offer_items.extend(offer_items)
 
-        # Deduplicate extracted offers within this run to ensure clean reporting
-        seen_keys = set()
+        # Deduplicate extracted offers within this run.
+        # - text_scraper promos: dedup by title only. The same brand-deal tile
+        #   (e.g. "Rodd & Gunn: Buy 2 Save $80") appears on every page because it
+        #   lives in a shared nav component. We keep the FIRST occurrence, which
+        #   carries the correct current_category seeded from the config URL entry.
+        # - image_promo / other: keep full (source, brand, source_url, title) key
+        #   since banner images are already content-hash deduped inside Playwright
+        #   and may legitimately differ per page.
+        seen_text_titles: set[str] = set()
+        seen_keys: set[tuple] = set()
         deduped_items = []
         for item in all_offer_items:
             title_clean = (item.get("title") or "").strip()
             item["title"] = title_clean
-            key = (item.get("source"), item.get("brand"), item.get("source_url"), title_clean.lower())
-            if key not in seen_keys:
+            if item.get("source") == "text_scraper":
+                norm = self._norm_key(title_clean)
+                if norm in seen_text_titles:
+                    continue
+                seen_text_titles.add(norm)
+            else:
+                key = (item.get("source"), item.get("brand"), item.get("source_url"), title_clean.lower())
+                if key in seen_keys:
+                    continue
                 seen_keys.add(key)
-                deduped_items.append(item)
+            deduped_items.append(item)
         all_offer_items = self._categorize_offer_items(deduped_items)
+
 
         self._offers_extracted = len(all_offer_items)
         summary = {
@@ -1091,7 +1107,14 @@ class HybridPromoExtractor:
             "     * Remove CTA clutter like 'Shop now', '*Terms apply', 'While stocks last', ticket symbols (¤), or raw UI button text.\n\n"
             "3. CATEGORIZATION:\n"
             f"   - Assign exactly one category from this list only: {self.category_list_text}.\n"
-            "   - Use promo text, brand, and source_url as strong evidence.\n"
+            "   - The source_url path is the PRIMARY categorization signal — follow it strictly:\n"
+            "     * URL contains '/men/'       → Menswear\n"
+            "     * URL contains '/women/'     → Womens\n"
+            "     * URL contains '/kids/'      → Kids\n"
+            "     * URL contains '/beauty/'    → Beauty\n"
+            "     * URL contains '/home/'      → Home\n"
+            "   - Also use the 'current_category' field in the record as a strong per-URL hint.\n"
+            "   - Only use 'Others' when no more specific category fits AND the source_url gives no clear signal.\n"
             "Return JSON only as a list of objects:\n"
             "[\n"
             "  {\n"
@@ -1144,23 +1167,54 @@ class HybridPromoExtractor:
                 logger.info("  FILTERED OUT (LLM policy keep=False): %s -> Cluster Title: '%s'", raw_titles, cluster.get("canonical_title"))
                 continue
 
-            # Find the primary item to inherit metadata (source_url, brand, confidence, etc.)
-            primary_idx = valid_ids[0]
-            primary_item = dict(offer_items[primary_idx])
-
-            # Apply LLM canonical title & category
             canonical_title = cluster.get("canonical_title")
-            if canonical_title and isinstance(canonical_title, str) and canonical_title.strip():
-                primary_item["title"] = canonical_title.strip()
-
             category = cluster.get("category")
-            if category in allowed:
-                primary_item["category"] = category
-            elif not primary_item.get("category") or primary_item.get("category") not in allowed:
-                primary_item["category"] = self.cfg.get("category") or "Others"
 
-            logger.info("  KEPT & CANONICALIZED: '%s' (Category: %s) [Merged %d raw offer(s): %s]", primary_item["title"], primary_item["category"], len(valid_ids), raw_titles)
-            final_items.append(primary_item)
+            # Fan-out: emit one row per unique source_url in this cluster.
+            #
+            # This is now safe because:
+            #   - text_scraper promos are pre-collapsed to 1 item per title
+            #     in run() before reaching here — fan-out is a no-op for them.
+            #   - image_promo items from /men/ and /kids/ are genuinely different
+            #     page appearances and each get their own DB row (same behaviour
+            #     as ASOS storing the same banner under Womens and Menswear).
+            seen_urls_in_cluster: set[str] = set()
+            cluster_items_added = 0
+            for item_idx in valid_ids:
+                source_item = dict(offer_items[item_idx])
+                item_url = source_item.get("source_url") or ""
+
+                if item_url in seen_urls_in_cluster:
+                    continue  # same URL already emitted for this cluster
+                seen_urls_in_cluster.add(item_url)
+
+                # Apply canonical title
+                if canonical_title and isinstance(canonical_title, str) and canonical_title.strip():
+                    source_item["title"] = canonical_title.strip()
+
+                # Apply LLM category; if LLM said "Others" but this item's
+                # per-URL seeded category is more specific, keep the specific one.
+                if category in allowed:
+                    if category == "Others" and source_item.get("category") in allowed and source_item.get("category") != "Others":
+                        pass  # preserve per-URL hint (e.g. Kids, Menswear)
+                    else:
+                        source_item["category"] = category
+                elif not source_item.get("category") or source_item.get("category") not in allowed:
+                    source_item["category"] = self.cfg.get("category") or "Others"
+
+                if cluster_items_added == 0:
+                    logger.info(
+                        "  KEPT & CANONICALIZED: '%s' (Category: %s) [Merged %d raw offer(s): %s]",
+                        source_item["title"], source_item["category"], len(valid_ids), raw_titles
+                    )
+                else:
+                    logger.info(
+                        "  + FAN-OUT row: '%s' (Category: %s) -> %s",
+                        source_item["title"], source_item["category"], item_url
+                    )
+
+                final_items.append(source_item)
+                cluster_items_added += 1
 
         # Append any items that were left out of the LLM JSON (safety fallback)
         for idx, item in enumerate(offer_items):
@@ -1291,7 +1345,9 @@ class HybridPromoExtractor:
             "brand":        self.brand,
             "source_url":   self.source_url,
             "title":        text[:200],
-            "category":     None,
+            # Seed with per-URL category hint from config so the downstream
+            # categorization LLM has page-level context as a starting point.
+            "category":     self.current_category,
             "confidence":   "high",
             "scraped_at":   datetime.now(timezone.utc).isoformat(),
         }
@@ -1320,7 +1376,10 @@ class HybridPromoExtractor:
                 "brand":        self.brand,
                 "source_url":   self.source_url,
                 "title":        text,
-                "category":     offer.get("category"),
+                # Vision LLM category takes priority; fall back to per-URL
+                # config hint (current_category) so a banner from /kids/ at
+                # least starts with "Kids" before the dedup/categorize pass.
+                "category":     offer.get("category") or self.current_category,
                 "confidence":   offer.get("confidence", "medium"),
                 "scraped_at":   datetime.now(timezone.utc).isoformat(),
             })
