@@ -66,23 +66,30 @@ class TeamPolicyEngine:
             self.teams = []
 
     @staticmethod
-    def _brand_matches(promo_brand: str, target_list: List[str]) -> bool:
+    def _brand_matches(promo_brand: str, target_list_or_dict: Any) -> Any:
         """
-        Check if promo_brand matches any brand in target_list.
+        Check if promo_brand matches any brand in target_list or target_dict.
+        Returns the matched brand key/item (str) if found, else None.
         Handles regional suffixes (e.g. 'Tommy Hilfiger Australia' matches 'Tommy Hilfiger').
         """
-        if not target_list:
-            return False
+        if not target_list_or_dict:
+            return None
 
         promo_b = (promo_brand or "").lower().strip()
         promo_b_normalized = re.sub(r"\s+(australia|au|official|online|store)$", "", promo_b)
 
-        for item in target_list:
+        target_keys = (
+            list(target_list_or_dict.keys())
+            if isinstance(target_list_or_dict, dict)
+            else target_list_or_dict
+        )
+
+        for item in target_keys:
             a = (item or "").lower().strip()
             a_normalized = re.sub(r"\s+(australia|au|official|online|store)$", "", a)
             if promo_b == a or promo_b_normalized == a_normalized:
-                return True
-        return False
+                return item
+        return None
 
     def evaluate_promotion(self, promo: Dict[str, Any]) -> List[str]:
         """
@@ -110,21 +117,31 @@ class TeamPolicyEngine:
 
             team_id = team.get("team_id")
             team_name = team.get("team_name", team_id)
-            categories = team.get("categories", [])
+            team_default_categories = team.get("categories", [])
+            effective_categories = team_default_categories
 
-            # 1. Category Matching
-            if not any(c.lower() == promo_category.lower() for c in categories):
-                continue
-
-            # 2. Allowlist Check (if specified)
+            # 1. Allowlist Check & Brand-Specific Category Determination
             allowed_brands = team.get("allowed_brands")
             if allowed_brands is not None:
-                if not self._brand_matches(promo_brand, allowed_brands):
+                matched_brand_key = self._brand_matches(promo_brand, allowed_brands)
+                if not matched_brand_key:
                     logger.debug(
                         "Promo '%s' (brand: %s) skipped for team '%s': brand not in allowed_brands",
                         promo.get("offer_title"), promo_brand, team_name
                     )
                     continue
+
+                # Support Option A: dict-based allowed_brands with brand-specific categories
+                if isinstance(allowed_brands, dict):
+                    brand_cfg = allowed_brands.get(matched_brand_key)
+                    if isinstance(brand_cfg, dict) and "categories" in brand_cfg:
+                        effective_categories = brand_cfg["categories"]
+                    elif isinstance(brand_cfg, list):
+                        effective_categories = brand_cfg
+
+            # 2. Category Matching against effective_categories
+            if not any(c.lower() == promo_category.lower() for c in effective_categories):
+                continue
 
             # 3. Denylist Check (if specified)
             excluded_brands = team.get("excluded_brands", [])

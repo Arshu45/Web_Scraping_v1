@@ -2,31 +2,33 @@
   "Womens (WIFA)": {
     "team_id": "womens_wifa",
     "categories": ["Womens", "Others", "Footwear"],
-    "allowed_brands": [
-      "David Jones",
-      "THE ICONIC",
-      "Country Road",
-      "Witchery",
-      "Forever New",
-      "Seed Heritage",
-      "Taking Shape",
-      "Levi's",
-      "Marcs",
-      "David Lawrance",
-      "Review",
-      "Cue",
-      "Veronika Maine",
-      "Converse",
-      "Skechers",
-      "Shoe hq",
-      "Tommy Hilfiger",
-      "Bonds",
-      "Berlei",
-      "Triumph",
-      "Calvin Klein",
-      "Jockey",
-      "Mimco"
-    ]
+    "allowed_brands": {
+      "David Jones": {},
+      "THE ICONIC": {},
+      "Country Road": {},
+      "Witchery": {},
+      "Forever New": {},
+      "Seed Heritage": {},
+      "Taking Shape": {},
+      "Levi's": {},
+      "Marcs": {},
+      "David Lawrance": {},
+      "Review": {},
+      "Cue": {},
+      "Veronika Maine": {},
+      "Converse": {},
+      "Skechers": {},
+      "Shoe hq": {},
+      "Tommy Hilfiger": {},
+      "Bonds": {},
+      "Berlei": {},
+      "Triumph": {},
+      "Calvin Klein": {},
+      "Jockey": {},
+      "Mimco": {
+        "categories": ["Womens", "Others"]
+      }
+    }
   },
   "Kids & Toys": {
     "team_id": "kids_toys_team",
