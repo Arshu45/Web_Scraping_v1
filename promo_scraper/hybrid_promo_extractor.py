@@ -161,7 +161,7 @@ Do NOT extract:
 Return a JSON array only — no explanation, no markdown, no code fences.
 Each element must have exactly these fields:
   - "promo_text" : Read and combine ALL visible text from top to bottom on the image into a single complete offer title. Always include top banner titles/headings (e.g. "Online Warehouse Sale") together with the main discount/price text (e.g. "Prices from $12").
-  - "category"   : one reporting category from this list only: {categories}. Prioritize matching specific department categories (Home, Entertainment, Womens, Beauty, Kids, Toys, Menswear) if any department keyword or product type is present (e.g. "Clothing & Home" -> "Home"). Use "Others" only for purely general sitewide shipping/newsletter offers. Never return null.
+  - "category"   : one reporting category from this list only: {categories}. or null.
   - "confidence" : "high", "medium", or "low"
 
 If the image contains no promotional text (lifestyle photo, brand logo, product photo), return: []
@@ -1092,8 +1092,6 @@ class HybridPromoExtractor:
             "3. CATEGORIZATION:\n"
             f"   - Assign exactly one category from this list only: {self.category_list_text}.\n"
             "   - Use promo text, brand, and source_url as strong evidence.\n"
-            "   - PRIORITIZE DEPARTMENT MATCHING: Always prefer assigning a specific department category (Home, Entertainment, Womens, Beauty, Kids, Toys, Menswear, Footwear) whenever ANY department keyword, product type, or brand context is present (e.g., 'Clothing & Home Clearance' -> 'Home', 'Pyjamas' -> 'Womens', 'Laptops/TVs/Tech' -> 'Entertainment', 'Shirts' -> 'Menswear'). Even for multi-department sales (e.g. 'Clothing, footwear and home'), assign it to one of the named department categories (such as 'Home') rather than 'Others'.\n"
-            "   - Only assign 'Others' if the promotion is purely generic with NO department or product context whatsoever (e.g., 'Free shipping over $100', '10% off first order', 'Sign up for newsletter'). NEVER return null, empty, or unlisted category names.\n\n"
             "Return JSON only as a list of objects:\n"
             "[\n"
             "  {\n"
