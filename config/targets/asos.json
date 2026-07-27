@@ -1,6 +1,6 @@
 {
   "brand": "ASOS",
-  "source_url": "https://www.asos.com/au/women/",
+  "source_url": ["https://www.asos.com/au/women/", "https://www.asos.com/au/men/"],
   "spider": "image_promo",
   "extraction_strategy": "screenshot",
   "text_selectors": [],

@@ -68,7 +68,7 @@ from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_message,
+    retry_if_exception,
     before_sleep_log,
 )
 
@@ -89,19 +89,61 @@ _vision_api_lock = threading.Lock()
 _last_vision_api_time = 0.0
 VISION_API_MIN_DELAY = float(os.getenv("VISION_API_MIN_DELAY", "4.5"))
 
+# Compiled once at import — rejects bare discount-amount-only strings
+# that carry no actionable offer context (e.g. "$600 OFF", "42% OFF", "1/2 PRICE").
+GENERIC_DISCOUNT_PATTERN = re.compile(
+    r"""
+    ^
+    (
+        \$\d+\s*OFF      |   # $600 OFF
+        \d+\s*%\s*OFF    |   # 42% OFF
+        \d+/\d+\s*PRICE      # 1/2 PRICE
+    )
+    $
+    """,
+    re.I | re.X,
+)
+
 # Matches rate-limit signals from all supported providers:
 #   - Generic:            429, quota, exhausted
 #   - Claude / Anthropic: overloaded, rate_limit_error, AnthropicError
 #   - LiteLLM gateway:    RateLimitError, litellm.RateLimitError
-_RATE_LIMIT_PATTERN = (
-    r".*429.*"
-    r"|.*quota.*"
-    r"|.*exhausted.*"
-    r"|.*overloaded.*"
-    r"|.*rate.?limit.*"
-    r"|.*AnthropicError.*"
-    r"|.*litellm\.RateLimit.*"
+_RATE_LIMIT_PATTERN = re.compile(
+    r"429|quota|exhausted|overloaded|rate.?limit|resource_exhausted|too_many_requests|AnthropicError",
+    re.IGNORECASE,
 )
+
+
+def _is_rate_limit_or_transient_error(exc: Exception) -> bool:
+    """
+    Predicate for tenacity retry in _call_llm.
+    Checks HTTP status codes (429, 502, 503, 504, 529), exception class names
+    (RateLimit, ResourceExhausted, etc.), wrapped response objects, and
+    regex message matching across LiteLLM, direct Gemini, and HTTP clients.
+    """
+    if exc is None:
+        return False
+
+    # 1. Check direct status code attributes
+    for attr in ("status_code", "status", "code", "http_status"):
+        val = getattr(exc, attr, None)
+        if isinstance(val, int) and val in (429, 502, 503, 504, 529):
+            return True
+
+    # 2. Check wrapped response object (e.g. httpx.HTTPStatusError)
+    response = getattr(exc, "response", None)
+    if response is not None:
+        status_code = getattr(response, "status_code", None)
+        if isinstance(status_code, int) and status_code in (429, 502, 503, 504, 529):
+            return True
+
+    # 3. Check exception class hierarchy and type name
+    exc_type_str = f"{type(exc).__module__}.{type(exc).__name__}"
+    if any(name in exc_type_str for name in ("RateLimit", "ResourceExhausted", "TooManyRequests", "Overloaded")):
+        return True
+
+    # 4. Fallback: string regex match on exception representation
+    return bool(_RATE_LIMIT_PATTERN.search(str(exc)))
 
 
 # ── Gemini Vision prompt ────────────────────────────────────────────────────
@@ -118,8 +160,8 @@ Do NOT extract:
 
 Return a JSON array only — no explanation, no markdown, no code fences.
 Each element must have exactly these fields:
-  - "promo_text" : the full offer text as it appears in the image
-  - "category"   : one reporting category from this list only: {categories}, or null
+  - "promo_text" : Read and combine ALL visible text from top to bottom on the image into a single complete offer title. Always include top banner titles/headings (e.g. "Online Warehouse Sale") together with the main discount/price text (e.g. "Prices from $12").
+  - "category"   : one reporting category from this list only: {categories}. or null.
   - "confidence" : "high", "medium", or "low"
 
 If the image contains no promotional text (lifestyle photo, brand logo, product photo), return: []
@@ -306,17 +348,33 @@ class HybridPromoExtractor:
 
             all_offer_items.extend(offer_items)
 
-        # Deduplicate extracted offers within this run to ensure clean reporting
-        seen_keys = set()
+        # Deduplicate extracted offers within this run.
+        # - text_scraper promos: dedup by title only. The same brand-deal tile
+        #   (e.g. "Rodd & Gunn: Buy 2 Save $80") appears on every page because it
+        #   lives in a shared nav component. We keep the FIRST occurrence, which
+        #   carries the correct current_category seeded from the config URL entry.
+        # - image_promo / other: keep full (source, brand, source_url, title) key
+        #   since banner images are already content-hash deduped inside Playwright
+        #   and may legitimately differ per page.
+        seen_text_titles: set[str] = set()
+        seen_keys: set[tuple] = set()
         deduped_items = []
         for item in all_offer_items:
             title_clean = (item.get("title") or "").strip()
             item["title"] = title_clean
-            key = (item.get("source"), item.get("brand"), item.get("source_url"), title_clean.lower())
-            if key not in seen_keys:
+            if item.get("source") == "text_scraper":
+                norm = self._norm_key(title_clean)
+                if norm in seen_text_titles:
+                    continue
+                seen_text_titles.add(norm)
+            else:
+                key = (item.get("source"), item.get("brand"), item.get("source_url"), title_clean.lower())
+                if key in seen_keys:
+                    continue
                 seen_keys.add(key)
-                deduped_items.append(item)
+            deduped_items.append(item)
         all_offer_items = self._categorize_offer_items(deduped_items)
+
 
         self._offers_extracted = len(all_offer_items)
         summary = {
@@ -352,9 +410,13 @@ class HybridPromoExtractor:
             "estimate, not a billing-accurate figure for every provider."
         )
 
-    def _record_skip(self, reason: str) -> None:
+    def _record_skip(self, reason: str, details: str = "") -> None:
         self._images_skipped += 1
         self._skip_reasons[reason] = self._skip_reasons.get(reason, 0) + 1
+        if details:
+            logger.info("  SKIP [%s]: %s", reason, details)
+        else:
+            logger.debug("  SKIP [%s]", reason)
 
     def _create_stealth_page(self, pw) -> tuple[Any, Any]:
         """Launch browser and context with stealth settings to bypass anti-bot screens."""
@@ -525,17 +587,8 @@ class HybridPromoExtractor:
                 if self.strategy in ("screenshot", "hybrid"):
                     screenshot_selectors = self.cfg.get("screenshot_selectors", [])
                     if not screenshot_selectors:
-                        # Generic default selectors to locate promos/banners
-                        screenshot_selectors = [
-                            "[class*='Hero']", "[class*='hero']",
-                            "[class*='Banner']", "[class*='banner']",
-                            "[class*='Editorial']", "[class*='editorial']",
-                            "[class*='Promo']", "[class*='promo']",
-                            "[class*='Campaign']", "[class*='campaign']",
-                            ".discover-more", ".discover-more-content", ".dm-sale",
-                            "img"
-                        ]
-
+                        logger.info("[%s] No screenshot_selectors specified in config — skipping screenshot extraction.", self.brand)
+                    
                     for frame in page.frames:
                         for selector in screenshot_selectors:
                             try:
@@ -563,7 +616,7 @@ class HybridPromoExtractor:
 
                                 if is_img and img_src:
                                     if any(p in img_src.lower() for p in self.exclude_patterns):
-                                        self._record_skip("excluded_pattern")
+                                        self._record_skip("excluded_pattern", f"URL matched exclude pattern: {img_src[:80]}")
                                         continue
 
                                 # Visibility check
@@ -600,7 +653,7 @@ class HybridPromoExtractor:
                                             ss_bytes = base64.b64decode(image_b64)
                                         except Exception as e:
                                             logger.debug("Failed to fetch image bytes via frame fetch: %s", e)
-                                            self._record_skip("fetch_failed")
+                                            self._record_skip("fetch_failed", f"Failed frame fetch for {img_src[:80]}")
                                             continue
                                 else:
                                     # For non-img elements (containers, divs), they MUST be visible
@@ -609,7 +662,7 @@ class HybridPromoExtractor:
                                     try:
                                         ss_bytes = el.screenshot()
                                     except Exception:
-                                        self._record_skip("fetch_failed")
+                                        self._record_skip("fetch_failed", f"Screenshot failed for element {selector}")
                                         continue
 
                                 if not ss_bytes:
@@ -618,6 +671,7 @@ class HybridPromoExtractor:
                                 # Deduplicate identical screenshots
                                 ss_hash = hashlib.sha256(ss_bytes).hexdigest()
                                 if ss_hash in seen_hashes:
+                                    logger.debug("Skipping duplicate image hash: %s", ss_hash[:12])
                                     continue
                                 seen_hashes.add(ss_hash)
 
@@ -625,13 +679,13 @@ class HybridPromoExtractor:
                                 try:
                                     img = Image.open(BytesIO(ss_bytes))
                                     if img.width < self.min_width or img.height < self.min_height:
-                                        self._record_skip("too_small")
+                                        self._record_skip("too_small", f"Dimensions {img.width}x{img.height} below min {self.min_width}x{self.min_height} ({selector})")
                                         continue
                                     if img.width > 0 and (img.width / max(img.height, 1)) < self.min_aspect:
-                                        self._record_skip("bad_aspect")
+                                        self._record_skip("bad_aspect", f"Aspect ratio {img.width/max(img.height,1):.2f} below min {self.min_aspect} ({selector})")
                                         continue
                                 except Exception:
-                                    self._record_skip("unreadable_image")
+                                    self._record_skip("unreadable_image", f"Unreadable image bytes ({selector})")
                                     continue
 
                                 self._images_found += 1
@@ -642,14 +696,14 @@ class HybridPromoExtractor:
 
                                 offers = self._vision_extract_cached(ss_bytes, "image/png", label, content_hash=ss_hash)
                                 if offers is None:
-                                    self._record_skip("unparsable_response")
+                                    self._record_skip("unparsable_response", f"Vision LLM returned unparsable response ({label})")
                                 elif offers:
                                     items = self._build_offer_items(offers, label)
                                     offer_items.extend(items)
                                     self._images_processed += 1
                                     logger.info("  SHOT  %d offers from selector '%s'", len(items), selector)
                                 else:
-                                    self._record_skip("no_offers_found")
+                                    self._record_skip("no_offers_found", f"Vision LLM returned 0 offers for image ({selector})")
 
             except PWTimeout:
                 logger.error("Playwright timed out loading %s", self.source_url)
@@ -685,29 +739,33 @@ class HybridPromoExtractor:
     def _run_image(self) -> list[dict]:
         """Original strategy: collect img src URLs → download → Gemini Vision."""
         image_urls = self._collect_image_urls()
-        self._images_found = len(image_urls)
-        logger.info("Image strategy: %d candidate URLs", self._images_found)
+        self._images_found += len(image_urls)
+        logger.info("Image strategy: %d candidate URLs found for %s", len(image_urls), self.source_url)
 
         offer_items: list[dict] = []
 
-        for url in image_urls:
-            if self._gemini_api_calls > 0:
-                time.sleep(self.delay)
+        # Reuse a single HTTP client for all downloads — enables connection
+        # pooling and HTTP/2 multiplexing instead of a fresh TCP+TLS
+        # handshake per image.
+        with httpx.Client(timeout=15, follow_redirects=True, http2=True) as http_client:
+            for url in image_urls:
+                if self._gemini_api_calls > 0:
+                    time.sleep(self.delay)
 
-            img_bytes, mime = self._download_image(url)
-            if img_bytes is None:
-                continue  # _download_image already recorded the specific skip reason
+                img_bytes, mime = self._download_image(url, client=http_client)
+                if img_bytes is None:
+                    continue  # _download_image already recorded the specific skip reason
 
-            content_hash = hashlib.sha256(img_bytes).hexdigest()
-            offers = self._vision_extract_cached(img_bytes, mime, url, content_hash=content_hash)
-            if offers is None:
-                self._record_skip("unparsable_response")
-            elif offers:
-                offer_items.extend(self._build_offer_items(offers, url))
-                self._images_processed += 1
-                logger.info("  IMG  %d offers from %s", len(offers), url)
-            else:
-                self._record_skip("no_offers_found")
+                content_hash = hashlib.sha256(img_bytes).hexdigest()
+                offers = self._vision_extract_cached(img_bytes, mime, url, content_hash=content_hash)
+                if offers is None:
+                    self._record_skip("unparsable_response")
+                elif offers:
+                    offer_items.extend(self._build_offer_items(offers, url))
+                    self._images_processed += 1
+                    logger.info("  IMG  %d offers from %s", len(offers), url)
+                else:
+                    self._record_skip("no_offers_found")
 
         return offer_items
 
@@ -753,10 +811,7 @@ class HybridPromoExtractor:
         urls: list[str] = []
 
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
-            page = browser.new_context(
-                user_agent=_UA, viewport={"width": 1920, "height": 1080}
-            ).new_page()
+            browser, page = self._create_stealth_page(pw)
             try:
                 self._goto_with_retry(page, self.source_url)
                 self._wait_and_scroll(page)
@@ -851,27 +906,32 @@ class HybridPromoExtractor:
         """
         Enforce the minimum delay between dispatches (not completions).
 
-        The global _vision_api_lock protects ONLY the timestamp read/write
-        (a microsecond operation); the actual API call runs OUTSIDE the lock
-        so other threads aren't blocked on network latency. The timestamp is
-        written BEFORE the lock is released so a burst of threads can't all
-        read a stale timestamp and fire simultaneously the moment the delay
-        expires.
+        The lock protects ONLY the timestamp read/write (a microsecond
+        operation).  Each thread claims the next available dispatch slot by
+        advancing _last_vision_api_time inside the lock, then sleeps
+        OUTSIDE the lock until its slot arrives.  This way concurrent
+        threads are staggered by VISION_API_MIN_DELAY without serializing
+        behind each other's sleep calls.
         """
         global _last_vision_api_time
+        sleep_time = 0.0
         with _vision_api_lock:
             now = time.time()
-            elapsed = now - _last_vision_api_time
-            if elapsed < VISION_API_MIN_DELAY:
-                sleep_time = VISION_API_MIN_DELAY - elapsed
-                logger.debug("Vision API rate gate: sleeping %.2fs", sleep_time)
-                time.sleep(sleep_time)
-            _last_vision_api_time = time.time()
+            # The earliest this thread may fire is the later of "now" and
+            # "last dispatch + minimum delay".
+            earliest = max(now, _last_vision_api_time + VISION_API_MIN_DELAY)
+            sleep_time = earliest - now
+            # Claim this slot so the next thread sees it.
+            _last_vision_api_time = earliest
+
+        if sleep_time > 0:
+            logger.debug("Vision API rate gate: sleeping %.2fs", sleep_time)
+            time.sleep(sleep_time)
 
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=2, min=5, max=70),
-        retry=retry_if_exception_message(match=_RATE_LIMIT_PATTERN),
+        retry=retry_if_exception(_is_rate_limit_or_transient_error),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
@@ -1041,10 +1101,20 @@ class HybridPromoExtractor:
             "   - Several extracted texts may refer to the identical underlying offer, discount, or campaign\n"
             "     (e.g., 'Clearance New Styles Added Up to 50% off selected clearance clothing, footwear and home' vs 'Up to 50% off selected clearance!* Shop now').\n"
             "   - Group items that describe the same promotion under 'merged_ids'.\n"
-            "   - Provide a clean, complete, and standard 'canonical_title' for the merged promotion (remove CTA clutter like 'Shop now', '*Terms apply', 'While stocks last').\n\n"
+            "   - Provide a clean, complete, and standard 'canonical_title' for the merged promotion:\n"
+            "     * Preserve all key promotion components present in the text: discount/badge (e.g., '$500 OFF', 'EPIC DEAL'), product/category name (e.g., 'Samsung Galaxy S25 256GB Navy'), and final sale price / original price (e.g., '$887', 'Was $1387').\n"
+            "     * Format product deal offers clearly, e.g.: '$500 OFF Samsung Galaxy S25 256GB Navy - $887 (Was $1387)' or 'EPIC DEAL Lenovo IdeaPad Slim 3 14\" i5 8GB 512GB Laptop - $799'.\n"
+            "     * Remove CTA clutter like 'Shop now', '*Terms apply', 'While stocks last', ticket symbols (¤), or raw UI button text.\n\n"
             "3. CATEGORIZATION:\n"
             f"   - Assign exactly one category from this list only: {self.category_list_text}.\n"
-            "   - Use promo text, brand, and source_url as strong evidence.\n\n"
+            "   - The source_url path is the PRIMARY categorization signal — follow it strictly:\n"
+            "     * URL contains '/men/'       → Menswear\n"
+            "     * URL contains '/women/'     → Womens\n"
+            "     * URL contains '/kids/'      → Kids\n"
+            "     * URL contains '/beauty/'    → Beauty\n"
+            "     * URL contains '/home/'      → Home\n"
+            "   - Also use the 'current_category' field in the record as a strong per-URL hint.\n"
+            "   - Only use 'Others' when no more specific category fits AND the source_url gives no clear signal.\n"
             "Return JSON only as a list of objects:\n"
             "[\n"
             "  {\n"
@@ -1092,28 +1162,71 @@ class HybridPromoExtractor:
             processed_ids.update(valid_ids)
 
             keep = cluster.get("keep")
+            raw_titles = [offer_items[i].get("title", "") for i in valid_ids if i < len(offer_items)]
             if keep is False:
+                logger.info("  FILTERED OUT (LLM policy keep=False): %s -> Cluster Title: '%s'", raw_titles, cluster.get("canonical_title"))
                 continue
 
-            # Find the primary item to inherit metadata (source_url, brand, confidence, etc.)
-            primary_idx = valid_ids[0]
-            primary_item = dict(offer_items[primary_idx])
-
-            # Apply LLM canonical title & category
             canonical_title = cluster.get("canonical_title")
-            if canonical_title and isinstance(canonical_title, str) and canonical_title.strip():
-                primary_item["title"] = canonical_title.strip()
-
             category = cluster.get("category")
-            if category in allowed:
-                primary_item["category"] = category
 
-            final_items.append(primary_item)
+            # Fan-out: emit one row per unique source_url in this cluster.
+            #
+            # This is now safe because:
+            #   - text_scraper promos are pre-collapsed to 1 item per title
+            #     in run() before reaching here — fan-out is a no-op for them.
+            #   - image_promo items from /men/ and /kids/ are genuinely different
+            #     page appearances and each get their own DB row (same behaviour
+            #     as ASOS storing the same banner under Womens and Menswear).
+            seen_urls_in_cluster: set[str] = set()
+            cluster_items_added = 0
+            for item_idx in valid_ids:
+                source_item = dict(offer_items[item_idx])
+                item_url = source_item.get("source_url") or ""
+
+                if item_url in seen_urls_in_cluster:
+                    continue  # same URL already emitted for this cluster
+                seen_urls_in_cluster.add(item_url)
+
+                # Apply canonical title
+                if canonical_title and isinstance(canonical_title, str) and canonical_title.strip():
+                    source_item["title"] = canonical_title.strip()
+
+                # Apply LLM category; if LLM said "Others" but this item's
+                # per-URL seeded category is more specific, keep the specific one.
+                if category in allowed:
+                    if category == "Others" and source_item.get("category") in allowed and source_item.get("category") != "Others":
+                        pass  # preserve per-URL hint (e.g. Kids, Menswear)
+                    else:
+                        source_item["category"] = category
+                elif not source_item.get("category") or source_item.get("category") not in allowed:
+                    source_item["category"] = self.cfg.get("category") or "Others"
+
+                if cluster_items_added == 0:
+                    logger.info(
+                        "  KEPT & CANONICALIZED: '%s' (Category: %s) [Merged %d raw offer(s): %s]",
+                        source_item["title"], source_item["category"], len(valid_ids), raw_titles
+                    )
+                else:
+                    logger.info(
+                        "  + FAN-OUT row: '%s' (Category: %s) -> %s",
+                        source_item["title"], source_item["category"], item_url
+                    )
+
+                final_items.append(source_item)
+                cluster_items_added += 1
 
         # Append any items that were left out of the LLM JSON (safety fallback)
         for idx, item in enumerate(offer_items):
             if idx not in processed_ids and not item.get("exclude"):
+                if not item.get("category") or item.get("category") not in allowed:
+                    item["category"] = self.cfg.get("category") or "Others"
                 final_items.append(item)
+
+        # Final safety guarantee: no item ever has category=None or unlisted category
+        for item in final_items:
+            if not item.get("category") or item.get("category") not in allowed:
+                item["category"] = self.cfg.get("category") or "Others"
 
         logger.info(
             "Brand semantic deduplication: %d raw offers merged into %d canonical promotions",
@@ -1196,11 +1309,15 @@ class HybridPromoExtractor:
     # Image download (image strategy only)
     # ═══════════════════════════════════════════════════════════════════════
 
-    def _download_image(self, url: str) -> tuple[bytes | None, str]:
+    def _download_image(self, url: str, *, client: httpx.Client | None = None) -> tuple[bytes | None, str]:
         """Download image bytes. Returns (bytes, mime) or (None, '')."""
         try:
-            with httpx.Client(timeout=15, follow_redirects=True) as client:
+            if client is not None:
                 r = client.get(url, headers={"User-Agent": _UA, "Referer": self.source_url})
+            else:
+                # Fallback: one-off client for standalone calls
+                with httpx.Client(timeout=15, follow_redirects=True) as fallback:
+                    r = fallback.get(url, headers={"User-Agent": _UA, "Referer": self.source_url})
             r.raise_for_status()
             ct = r.headers.get("content-type", "")
             if "image" not in ct:
@@ -1228,7 +1345,9 @@ class HybridPromoExtractor:
             "brand":        self.brand,
             "source_url":   self.source_url,
             "title":        text[:200],
-            "category":     None,
+            # Seed with per-URL category hint from config so the downstream
+            # categorization LLM has page-level context as a starting point.
+            "category":     self.current_category,
             "confidence":   "high",
             "scraped_at":   datetime.now(timezone.utc).isoformat(),
         }
@@ -1240,19 +1359,6 @@ class HybridPromoExtractor:
             text = (offer.get("promo_text") or "").strip()
             if not text:
                 continue
-
-            GENERIC_DISCOUNT_PATTERN = re.compile(
-                r"""
-                ^
-                (
-                    \$\d+\s*OFF      |   # $600 OFF
-                    \d+\s*%\s*OFF    |   # 42% OFF
-                    \d+/\d+\s*PRICE      # 1/2 PRICE
-                )
-                $
-                """,
-                re.I | re.X,
-            )
 
             if GENERIC_DISCOUNT_PATTERN.match(text):
                 continue
@@ -1270,7 +1376,10 @@ class HybridPromoExtractor:
                 "brand":        self.brand,
                 "source_url":   self.source_url,
                 "title":        text,
-                "category":     offer.get("category"),
+                # Vision LLM category takes priority; fall back to per-URL
+                # config hint (current_category) so a banner from /kids/ at
+                # least starts with "Kids" before the dedup/categorize pass.
+                "category":     offer.get("category") or self.current_category,
                 "confidence":   offer.get("confidence", "medium"),
                 "scraped_at":   datetime.now(timezone.utc).isoformat(),
             })

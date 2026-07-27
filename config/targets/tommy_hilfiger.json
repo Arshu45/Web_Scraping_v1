@@ -1,5 +1,5 @@
 {
-  "brand": "Tommy Hilfiger Australia",
+  "brand": "Tommy Hilfiger",
   "source_url": "https://au.tommy.com/promotions",
   "spider": "image_promo",
   "extraction_strategy": "hybrid",

@@ -9,9 +9,6 @@ Usage:
 
 import sys
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -80,10 +77,6 @@ def generate_report(hybrid_results: list[dict]):
 # Rule of thumb:      (available_RAM_GB - 2) / 0.25
 #   e.g. 8 GB  RAM → 24 max  (8 is a safe conservative default)
 #        16 GB RAM → 56 max  (12–16 is a good balanced ceiling)
-print("MAX_CONCURRENT_BROWSERS", os.getenv("MAX_CONCURRENT_BROWSERS"))
-MAX_CONCURRENT_BROWSERS = int(os.getenv("MAX_CONCURRENT_BROWSERS", "4"))
-
-
 @flow(name="Master Promo Scraper Pipeline", log_prints=True)
 def master_pipeline():
     """
@@ -93,8 +86,14 @@ def master_pipeline():
        are open at once.
     3. Prints a full checklist summary report.
     """
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    MAX_CONCURRENT_BROWSERS = int(os.getenv("MAX_CONCURRENT_BROWSERS", "4"))
+
     logger = get_run_logger()
     logger.info("🚀 Master pipeline starting...")
+    logger.info("MAX_CONCURRENT_BROWSERS = %d", MAX_CONCURRENT_BROWSERS)
 
     from scripts.run_hybrid_promo_scraper import load_targets
     targets = load_targets()
