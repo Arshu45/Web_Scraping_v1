@@ -1,0 +1,21 @@
+{
+  "brand": "MAC Cosmetics",
+  "source_url": ["https://www.maccosmetics.com.au/products/17307/products/makeup/goodbyes/goodbyes", 
+  "https://m.maccosmetics.com.au/offer-details"],
+  "spider": "image_promo",
+  "extraction_strategy": "text",
+  "text_selectors": [
+    ".content-over-media__text .mantle-custom-text:not(.title-01)",
+    ".content-block-basic-tout-content .content-block__line--headline"
+  ],
+  "screenshot_selectors": [],
+  "min_image_width": 400,
+  "min_image_height": 150,
+  "min_aspect_ratio": 1.2,
+  "exclude_url_patterns": [
+    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+  ],
+  "request_delay_seconds": 4,
+  "scroll_depth": 3,
+  "enabled": false
+}

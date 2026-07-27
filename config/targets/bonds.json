@@ -12,7 +12,8 @@
   "screenshot_selectors": [
     "a[href*='warehouse-clearance-sale'] img[data-element='desktop_image']",
     "a[data-id='homepage-unidays-tile'] img",
-    ".category-sale .single-banner-widget.promotion.full img.img-desktop"
+    ".category-sale .single-banner-widget.promotion.full img.img-desktop",
+    ".cms-home .homepage-hero-banner img.img-desktop"
   ],
   "min_image_width": 400,
   "min_image_height": 150,
