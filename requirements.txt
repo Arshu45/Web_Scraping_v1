@@ -18,6 +18,8 @@ tenacity==9.1.4                 # Exponential backoff for API retries
 streamlit==1.57.0
 pandas==3.0.2
 plotly==6.7.0
+# pyarrow==17.0.0   # pinned: 25.x causes SIGSEGV on macOS arm64 (Apple Silicon) with NumPy 2.x; 17.0 is the first release with NumPy 2 wheel support
+# altair==5.3.0     # pinned: streamlit 1.57 explicitly blocks altair 5.4.0 and 5.4.1; altair 6.x has not been validated
 
 # ── Utilities ──────────────────────────────────────
 python-dotenv==1.2.2           # Load .env configuration

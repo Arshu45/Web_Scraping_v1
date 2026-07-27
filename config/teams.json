@@ -1,0 +1,184 @@
+{
+  "Womens (WIFA)": {
+    "team_id": "womens_wifa",
+    "categories": ["Womens", "Others", "Footwear"],
+    "allowed_brands": {
+      "David Jones": {},
+      "The Iconic": {
+        "categories": ["Womens", "Others"]
+      },
+      "Country Road": {},
+      "Witchery": {},
+      "Forever New": {
+        "categories": ["Womens"]
+      },
+      "Seed Heritage": {},
+      "Taking Shape": {},
+      "Levi's": {},
+      "Marcs": {},
+      "David Lawrance": {},
+      "Review": {},
+      "Cue": {},
+      "Veronika Maine": {},
+      "Converse": {
+        "categories": ["Footwear"]
+      },
+      "Skechers": {},
+      "Shoe hq": {},
+      "Tommy Hilfiger": {},
+      "Bonds": {},
+      "Berlei": {},
+      "Triumph": {},
+      "Calvin Klein": {},
+      "Jockey": {},
+      "Mimco": {
+        "categories": ["Womens", "Others"]
+      }
+    }
+  },
+  "Kids & Toys": {
+    "team_id": "kids_toys_team",
+    "categories": ["Kids", "Toys", "Others"],
+    "allowed_brands": {
+      "David Jones": {},
+      "The Iconic": {
+        "categories": ["Kids", "Toys", "Others"]
+      },
+      "K Mart": {},
+      "H&M": {},
+      "BIG W": {
+        "categories": ["Kids", "Toys", "Others"]
+      },
+      "Target": {
+        "categories": ["Kids", "Toys", "Others"]
+      },
+      "Cotton On": {
+        "categories": ["Kids", "Toys"]
+      },
+      "Bonds": {
+        "categories": ["Kids", "Toys", "Others"]
+      },
+      "Uniqlo": {},
+      "Best and less": {},
+      "Next Australia": {}
+    }
+  },
+  "Toys": {
+    "team_id": "toys_team",
+    "categories": ["Toys", "Others"],
+    "allowed_brands": {
+      "David Jones": {},
+      "The Iconic": {
+        "categories": ["Toys"]
+      },
+      "K Mart": {},
+      "BIG W": {
+        "categories": ["Toys"]
+      },
+      "Target": {
+        "categories": ["Toys"]
+      },
+      "Amazon Toys & Games": {
+        "categories": ["Toys", "Others"]
+      },
+      "Toyworld": {
+        "categories": ["Toys", "Others"]
+      }
+    }
+  },
+  "Menswear": {
+    "team_id": "menswear_team",
+    "categories": ["Menswear", "Others","Footwear"],
+    "allowed_brands": {
+      "David Jones": {},
+      "The Iconic": {
+        "categories": ["Menswear", "Footwear", "Others"]
+      },
+      "Tommy Hilfiger": {
+        "categories": ["Menswear"]
+      },
+      "Calvin Klein": {},
+      "Ben Sherman": {},
+      "ASOS": {},
+      "Cotton On": {
+        "categories": ["Menswear", "Others"]
+      },
+      "Just Jeans": {
+        "categories": ["Menswear"]
+      },
+      "Bonds": {
+        "categories": ["Menswear", "Others"]
+      },
+      "Levi's": {},
+      "Ralph Lauren": {},
+      "Rodd & Gunn": {},
+      "Lacoste": {},
+      "Gazman": {},
+      "Gant": {},
+      "Adidas": {},
+      "Champion": {
+        "categories": ["Menswear"]
+      },
+      "Puma": {},
+      "Van Heusen": {
+        "categories": ["Menswear"]
+      },
+      "Oxford Shop": {
+        "categories": ["Menswear", "Others"]
+      },
+      "Jack & Jones": {},
+      "Superdry": {
+        "categories": ["Menswear"]
+      },
+      "Wild Rhino": {},
+      "American Eagle": {
+        "categories": ["Menswear"]
+      }
+    }
+  },
+  "Entertainment": {
+    "team_id": "entertainment_team",
+    "categories": ["Entertainment", "Others"],
+    "allowed_brands": [
+      "JB Hi-Fi",
+      "The Good Guys",
+      "David Jones",
+      "Harvey Norman",
+      "Strandbags",
+      "Harris Scarfe"
+    ]
+  },
+  "Beauty": {
+    "team_id": "beauty_team",
+    "categories": ["Beauty", "Others"],
+    "allowed_brands": [
+      "David Jones",
+      "THE ICONIC",
+      "MECCA",
+      "Adore Beauty",
+      "Sephora",
+      "Clarins",
+      "Clinique",
+      "Estee Lauder",
+      "Lancome",
+      "Bobbi Brown",
+      "MAC",
+      "YSL",
+      "Giorgio Armani"
+    ]
+  },
+  "Home": {
+    "team_id": "home_team",
+    "categories": ["Home", "Others"],
+    "allowed_brands": [
+      "David Jones",
+      "Harris Scarfe",
+      "Bed Bath N' Table",
+      "Adairs",
+      "House",
+      "Target",
+      "BIG W",
+      "Kitchen Warehouse"
+    ]
+  }
+}
