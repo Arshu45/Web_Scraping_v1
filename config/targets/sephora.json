@@ -29,6 +29,6 @@
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 2,
-  "enabled": true
+  "enabled": false
 }
 
