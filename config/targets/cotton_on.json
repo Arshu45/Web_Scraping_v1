@@ -15,7 +15,8 @@
     ".swiper-slide img",
     ".subscription-footer-copy",
     ".meganavbox-title-sale-rectangle",
-    ".meganavbox-sale a"
+    ".meganavbox-sale a",
+    ".co-category-quick-link"
   ],
   "screenshot_selectors": [
     ".trade-tiles-four-offers",
