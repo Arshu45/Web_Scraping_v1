@@ -1,5 +1,5 @@
 {
-  "brand": "Review Australia",
+  "brand": "Review",
   "source_url": "https://review-australia.com",
   "spider": "image_promo",
   "extraction_strategy": "hybrid",

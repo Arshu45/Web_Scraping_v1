@@ -1,7 +1,9 @@
 {
-  "brand": "MAC Cosmetics",
-  "source_url": ["https://www.maccosmetics.com.au/products/17307/products/makeup/goodbyes/goodbyes", 
-  "https://m.maccosmetics.com.au/offer-details"],
+  "brand": "MAC",
+  "source_url": [
+    "https://www.maccosmetics.com.au/products/17307/products/makeup/goodbyes/goodbyes", 
+    "https://m.maccosmetics.com.au/offer-details"
+  ],
   "spider": "image_promo",
   "extraction_strategy": "text",
   "text_selectors": [

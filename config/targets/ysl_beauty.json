@@ -1,5 +1,5 @@
 {
-  "brand": "YSL Beauty",
+  "brand": "YSL",
   "source_url": "https://www.yslbeauty.com.au/",
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
