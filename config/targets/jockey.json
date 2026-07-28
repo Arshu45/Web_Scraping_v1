@@ -1,14 +1,10 @@
 {
-  "brand": "MAC",
-  "source_url": [
-    "https://www.maccosmetics.com.au/products/17307/products/makeup/goodbyes/goodbyes", 
-    "https://m.maccosmetics.com.au/offer-details"
-  ],
+  "brand": "Jockey",
+  "source_url": "https://jockey.com.au/",
   "spider": "image_promo",
   "extraction_strategy": "text",
   "text_selectors": [
-    ".content-over-media__text .mantle-custom-text:not(.title-01)",
-    ".content-block-basic-tout-content .content-block__line--headline"
+    ".ccb-subtext"
   ],
   "screenshot_selectors": [],
   "min_image_width": 400,

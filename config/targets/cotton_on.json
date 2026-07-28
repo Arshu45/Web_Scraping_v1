@@ -15,7 +15,8 @@
     ".swiper-slide img",
     ".subscription-footer-copy",
     ".meganavbox-title-sale-rectangle",
-    ".meganavbox-sale a"
+    ".meganavbox-sale a",
+    ".co-category-quick-link"
   ],
   "screenshot_selectors": [
     ".trade-tiles-four-offers",
@@ -28,5 +29,5 @@
   "min_aspect_ratio": 1.0,
   "request_delay_seconds": 4,
   "scroll_depth": 2,
-  "enabled": true
+  "enabled": false
 }

@@ -1,17 +1,13 @@
 {
-  "brand": "YSL",
-  "source_url": "https://www.yslbeauty.com.au/",
+  "brand": "H&M",
+  "source_url": "https://www2.hm.com/en_in/index.html",
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
-  "text_selectors": [
-    ".c-navigation__content-title"
-  ],
-  "screenshot_selectors": [
-    ".c-navigation__content-image img"
-  ],
-  "min_image_width": 200,
+  "text_selectors": [],
+  "screenshot_selectors": [],
+  "min_image_width": 400,
   "min_image_height": 150,
-  "min_aspect_ratio": 0.5,
+  "min_aspect_ratio": 1.2,
   "exclude_url_patterns": [
     "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
   ],

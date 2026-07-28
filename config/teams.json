@@ -139,46 +139,46 @@
   "Entertainment": {
     "team_id": "entertainment_team",
     "categories": ["Entertainment", "Others"],
-    "allowed_brands": [
-      "JB Hi-Fi",
-      "The Good Guys",
-      "David Jones",
-      "Harvey Norman",
-      "Strandbags",
-      "Harris Scarfe"
-    ]
+    "allowed_brands":{
+      "JB Hi-fi":{},
+      "The Good Guys":{},
+      "David Jones":{},
+      "Harvey Norman":{},
+      "Strandbags":{},
+      "Harris Scarfe":{}
+    }
   },
   "Beauty": {
     "team_id": "beauty_team",
     "categories": ["Beauty", "Others"],
-    "allowed_brands": [
-      "David Jones",
-      "THE ICONIC",
-      "MECCA",
-      "Adore Beauty",
-      "Sephora",
-      "Clarins",
-      "Clinique",
-      "Estee Lauder",
-      "Lancome",
-      "Bobbi Brown",
-      "MAC",
-      "YSL",
-      "Giorgio Armani"
-    ]
+    "allowed_brands":{
+      "David Jones": {},
+      "The Iconic": {},
+      "MECCA": {},
+      "Adore Beauty": {},
+      "Sephora": {},
+      "Clarins": {},
+      "Clinique": {},
+      "Estee Lauder": {},
+      "Lancome": {},
+      "Bobbi Brown": {},
+      "MAC": {},
+      "YSL": {},
+      "Giorgio Armani": {}
+    }
   },
   "Home": {
     "team_id": "home_team",
     "categories": ["Home", "Others"],
-    "allowed_brands": [
-      "David Jones",
-      "Harris Scarfe",
-      "Bed Bath N' Table",
-      "Adairs",
-      "House",
-      "Target",
-      "BIG W",
-      "Kitchen Warehouse"
-    ]
+    "allowed_brands": {
+      "David Jones": {},
+      "Harris Scarfe": {},
+      "Bed Bath N' Table": {},
+      "Adairs": {},
+      "House": {},
+      "Target": {},
+      "BIG W": {},
+      "Kitchen Warehouse": {}
+    }
   }
 }
