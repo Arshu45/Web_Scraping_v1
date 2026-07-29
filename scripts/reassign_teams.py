@@ -37,16 +37,13 @@ def reassign_all():
         logger.info("Found %d promotions to reassign.", total)
 
         reassigned = 0
-        # Stream rows in server-side chunks instead of loading the entire
-        # table into memory.  yield_per() keeps at most BATCH_SIZE ORM
-        # objects hydrated at a time.
-        query = session.query(Promotion).yield_per(BATCH_SIZE)
-        for i, promo in enumerate(query, start=1):
+        # Load promotions list so session.commit() doesn't invalidate an active server-side cursor
+        promotions = session.query(Promotion).all()
+        for i, promo in enumerate(promotions, start=1):
             team_ids = engine.sync_promotion_assignments(session, promo)
             reassigned += 1
 
-            # Periodic commit to flush pending DELETEs/INSERTs from
-            # sync_promotion_assignments and keep the session lean.
+            # Periodic commit to flush assignments and keep memory lean
             if i % BATCH_SIZE == 0:
                 session.commit()
                 logger.info("  Progress: %d / %d (last: %s → teams: %s)", i, total, promo.brand, team_ids or "unassigned")

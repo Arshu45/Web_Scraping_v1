@@ -9,6 +9,8 @@
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
+    "a[aria-label='hero']",
+    "a[href*='/collections/']",
     ".klaviyo-form-richtext",
     "[data-topbar-message]",
     "[id^='hero-template--'] h2",
@@ -16,6 +18,8 @@
     ".js-newsletter-form h3"
   ],
   "screenshot_selectors": [
+    "a[aria-label='hero']",
+    "a[href*='/collections/']",
     ".plp-banner",
     ".plp-banner img"
   ],
@@ -32,5 +36,5 @@
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": false
+  "enabled": true
 }

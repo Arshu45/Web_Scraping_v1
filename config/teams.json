@@ -24,13 +24,19 @@
         "categories": ["Footwear"]
       },
       "Skechers": {},
-      "Shoe hq": {},
+      "Shoe hq": {
+        "categories": ["Womens", "Footwear"]
+      },
       "Tommy Hilfiger": {},
       "Bonds": {},
       "Berlei": {},
       "Triumph": {},
-      "Calvin Klein": {},
-      "Jockey": {},
+      "Calvin Klein": {
+        "categories": ["Womens", "Others"]
+      },
+      "Jockey": {
+        "categories": ["Womens", "Others"]
+      },
       "Mimco": {
         "categories": ["Womens", "Others"]
       }
@@ -47,7 +53,7 @@
       "K Mart": {},
       "H&M": {},
       "BIG W": {
-        "categories": ["Kids", "Toys", "Others"]
+        "categories": ["Kids", "Toys"]
       },
       "Target": {
         "categories": ["Kids", "Toys", "Others"]

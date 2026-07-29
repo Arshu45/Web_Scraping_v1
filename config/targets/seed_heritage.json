@@ -3,16 +3,19 @@
   "source_url": [
     {
       "url": "https://www.seedheritage.com/ix",
-      "category_hint": "Fashion for women, kids, and babies. Women's clothing -> Womens. Children's and baby -> Kids."
+      "category_hint": "Seed Heritage is primarily Women's fashion and Kids. Storewide sales or site-wide discounts (e.g., 'Take a Further 40% Off Sale Styles') -> Womens. Assign Kids ONLY for explicit children, kids, or baby promotions. If you are unsure, always choose Womens."
     }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
+    ".promo-storewide-grid",
+    ".promo-storewide-title",
     ".global-taf",
     "h2.wrapper"
   ],
   "screenshot_selectors": [
+    ".promo-storewide-grid",
     ".global-taf",
     "h2.wrapper"
   ],
@@ -29,5 +32,5 @@
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": false
+  "enabled": true
 }
