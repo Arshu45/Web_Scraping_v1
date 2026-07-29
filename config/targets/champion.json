@@ -1,6 +1,11 @@
 {
-  "brand": "Champion Australia",
-  "source_url": "https://www.champion.com.au/",
+  "brand": "Champion",
+  "source_url": [
+    {
+      "url": "https://www.champion.com.au/",
+      "category_hint": "Athletic apparel and streetwear. Hoodies, sweatshirts, track pants -> Menswear or Womens. Sneakers -> Footwear."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
@@ -21,7 +26,12 @@
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
   "exclude_url_patterns": [
-    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,

@@ -1,6 +1,11 @@
 {
-  "brand": "Converse Australia",
-  "source_url": "https://www.converse.com.au/spend-save",
+  "brand": "Converse",
+  "source_url": [
+    {
+      "url": "https://www.converse.com.au/spend-save",
+      "category_hint": "Footwear-only brand. ALL promotions (spend and save, percentage off, bundle deals) -> Footwear. Do not assign Others or Menswear or Womens. Standalone free delivery notices -> keep=false."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

@@ -1,8 +1,14 @@
 {
   "brand": "Bonds",
   "source_url": [
-    "https://www.bonds.com.au/",
-    "https://www.bonds.com.au/sale.html"
+    {
+      "url": "https://www.bonds.com.au/",
+      "category_hint": "Apparel retailer. Women's clothing, bras, underwear, activewear → Womens. Men's underwear, tees, socks, sleepwear → Menswear. Babywear & kids clothing → Kids. Storewide promotions → assign by product keywords. Never use Others for apparel."
+    },
+    {
+      "url": "https://www.bonds.com.au/sale.html",
+      "category_hint": "Sale & clearance. Women's → Womens. Men's → Menswear. Baby & kids → Kids. Storewide promotions → assign by product keywords."
+    }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
@@ -12,7 +18,8 @@
   "screenshot_selectors": [
     "a[href*='warehouse-clearance-sale'] img[data-element='desktop_image']",
     "a[data-id='homepage-unidays-tile'] img",
-    ".category-sale .single-banner-widget.promotion.full img.img-desktop"
+    ".category-sale .single-banner-widget.promotion.full img.img-desktop",
+    ".cms-home .homepage-hero-banner img.img-desktop"
   ],
   "min_image_width": 400,
   "min_image_height": 150,

@@ -1,6 +1,11 @@
 {
   "brand": "Oxford Shop",
-  "source_url": "https://www.oxfordshop.com.au/",
+  "source_url": [
+    {
+      "url": "https://www.oxfordshop.com.au/",
+      "category_hint": "Premium Australian menswear brand. Shirts, suits, chinos, polos, and storewide outlet sales (e.g. '70% OFF Storewide', '50-80% OFF Past Season Styles') -> Menswear. Never assign Others for a clothing deal from this brand."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

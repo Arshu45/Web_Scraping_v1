@@ -1,23 +1,34 @@
 {
   "brand": "Cotton On",
-  "source_url": "https://cottonon.com/AU/",
+  "source_url": [
+    {
+      "url": "https://cottonon.com/AU/",
+      "category_hint": "Australian fashion retailer (main store). Storewide and clearance sales -> Womens or Menswear. When promo text is ambiguous and mentions no specific gender, prefer Womens as this is the dominant department on the main store page."
+    },
+    {
+      "url": "https://cottonon.com/AU/cottononkids/",
+      "category_hint": "Cotton On Kids department page. All promotions from this URL -> Kids, regardless of promo wording."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
     ".trade-tile p.tt",
     ".trade-tile p",
+    "p.tt",
+    ".text-overlay",
+    ".heading-container",
+    ".swiper-slide img",
     ".subscription-footer-copy",
     ".meganavbox-title-sale-rectangle",
     ".meganavbox-sale a",
-    "div.subscription-footer-copy",
-    "p.tt"
+    ".co-category-quick-link"
   ],
   "screenshot_selectors": [
     ".trade-tiles-four-offers",
-    "div.trade-tiles-four-offers",
-    ".meganavbox-sale",
-    "[class*='trade-tiles']",
-    "[class*='meganavbox']"
+    ".swiper-slide",
+    ".product-carousel",
+    ".meganavbox-sale"
   ],
   "min_image_width": 300,
   "min_image_height": 100,

@@ -1,8 +1,18 @@
 {
   "brand": "The Iconic",
   "source_url": [
-    "https://www.theiconic.com.au/men/",
-    "https://www.theiconic.com.au/kids/"
+    {
+      "url": "https://www.theiconic.com.au/men/",
+      "category_hint": "The Iconic men's department page. Clothing and fashion promotions from this URL -> Menswear. Footwear promotions -> Footwear. Storewide sale banners from this page -> Menswear."
+    },
+    {
+      "url": "https://www.theiconic.com.au/kids/",
+      "category_hint": "The Iconic kids department page. All promotions scraped from this URL -> Kids, regardless of how the promo text is worded."
+    },
+    {
+      "url": "https://www.theiconic.com.au/discover-beauty-wellness/",
+      "category_hint": "The Iconic beauty and wellness department page. All promotions scraped from this URL -> Beauty."
+    }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
@@ -19,6 +29,9 @@
     "a[href*='campaign=lp-']"
   ],
   "screenshot_selectors": [
+    "img.applyHeight",
+    ".applyHeight",
+    "[class*='applyHeight']",
     "div.dm-sale",
     "div.row.discover-more",
     "section.discover-more-content",
@@ -35,9 +48,9 @@
     "div.c01238",
     "div.c01241"
   ],
-  "min_image_width": 600,
-  "min_image_height": 150,
-  "min_aspect_ratio": 1.5,
+  "min_image_width": 300,
+  "min_image_height": 100,
+  "min_aspect_ratio": 0.8,
   "request_delay_seconds": 4,
   "scroll_depth": 2,
   "enabled": false

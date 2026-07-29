@@ -1,6 +1,11 @@
 {
   "brand": "House",
-  "source_url": "https://www.house.com.au",
+  "source_url": [
+    {
+      "url": "https://www.house.com.au",
+      "category_hint": "Australian kitchenware and homewares retailer. Big Brands Sale, RRP discounts, cookware, bakeware, and kitchen gadget promotions -> Home. Always assign Home for this brand."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
@@ -26,5 +31,4 @@
   "request_delay_seconds": 4,
   "scroll_depth": 3,
   "enabled": false
-  
 }

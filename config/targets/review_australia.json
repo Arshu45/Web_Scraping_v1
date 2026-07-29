@@ -1,9 +1,16 @@
 {
-  "brand": "Review Australia",
-  "source_url": "https://review-australia.com",
+  "brand": "Review",
+  "source_url": [
+    {
+      "url": "https://review-australia.com",
+      "category_hint": "Women's vintage-inspired dresses and fashion -> Womens. Always Womens."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
+    "a[aria-label='hero']",
+    "a[href*='/collections/']",
     ".klaviyo-form-richtext",
     "[data-topbar-message]",
     "[id^='hero-template--'] h2",
@@ -11,6 +18,8 @@
     ".js-newsletter-form h3"
   ],
   "screenshot_selectors": [
+    "a[aria-label='hero']",
+    "a[href*='/collections/']",
     ".plp-banner",
     ".plp-banner img"
   ],
@@ -18,9 +27,14 @@
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
   "exclude_url_patterns": [
-    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": false
+  "enabled": true
 }

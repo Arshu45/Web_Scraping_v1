@@ -1,6 +1,11 @@
 {
   "brand": "Ben Sherman",
-  "source_url": "https://www.bensherman.com.au/",
+  "source_url": [
+    {
+      "url": "https://www.bensherman.com.au/",
+      "category_hint": "Men's clothing brand. Shirts, suits, jackets, polo shirts -> Menswear."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [],
@@ -9,7 +14,12 @@
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
   "exclude_url_patterns": [
-    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,

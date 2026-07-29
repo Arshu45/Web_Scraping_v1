@@ -1,6 +1,11 @@
 {
   "brand": "American Eagle",
-  "source_url": "https://americaneagle.com.au/",
+  "source_url": [
+    {
+      "url": "https://americaneagle.com.au/",
+      "category_hint": "Casual denim and apparel brand. Jeans, tops, apparel -> Menswear or Womens depending on context."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
@@ -18,7 +23,12 @@
   "min_image_height": 100,
   "min_aspect_ratio": 1.0,
   "exclude_url_patterns": [
-    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
