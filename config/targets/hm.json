@@ -1,6 +1,11 @@
 {
   "brand": "H&M",
-  "source_url": "https://www2.hm.com/en_in/index.html",
+  "source_url": [
+    {
+      "url": "https://www2.hm.com/en_in/index.html",
+      "category_hint": "Fast fashion retailer. Women's clothing -> Womens. Men's clothing -> Menswear. Kids clothing -> Kids."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [],
@@ -9,7 +14,12 @@
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
   "exclude_url_patterns": [
-    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,

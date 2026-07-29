@@ -1,6 +1,11 @@
 {
   "brand": "Estee Lauder",
-  "source_url": "https://www.esteelauder.com.au/",
+  "source_url": [
+    {
+      "url": "https://www.esteelauder.com.au/",
+      "category_hint": "Luxury skincare, makeup, and fragrance -> Beauty. Always Beauty."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "text",
   "text_selectors": [
@@ -14,7 +19,12 @@
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
   "exclude_url_patterns": [
-    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,

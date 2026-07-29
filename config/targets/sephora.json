@@ -1,8 +1,14 @@
 {
   "brand": "Sephora",
   "source_url": [
-    "https://www.sephora.com.au/sale",
-    "https://www.sephora.com.au"
+    {
+      "url": "https://www.sephora.com.au/sale",
+      "category_hint": "Skincare, makeup, haircare, and cosmetics retailer -> Beauty. Always Beauty."
+    },
+    {
+      "url": "https://www.sephora.com.au",
+      "category_hint": "Skincare, makeup, haircare, and cosmetics retailer -> Beauty. Always Beauty."
+    }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
@@ -31,4 +37,3 @@
   "scroll_depth": 2,
   "enabled": false
 }
-

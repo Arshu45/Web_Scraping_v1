@@ -1,9 +1,18 @@
 {
   "brand": "Adore Beauty",
   "source_url": [
-    "https://www.adorebeauty.com.au/",
-    "https://www.adorebeauty.com.au/c/specials/sale/clearance.html",
-    "https://www.adorebeauty.com.au/cms/adore-rewards.html"
+    {
+      "url": "https://www.adorebeauty.com.au/",
+      "category_hint": "Australian online beauty retailer. Skincare, makeup, haircare, fragrance -> Beauty. Rewards and loyalty program info -> keep=false."
+    },
+    {
+      "url": "https://www.adorebeauty.com.au/c/specials/sale/clearance.html",
+      "category_hint": "Australian online beauty retailer. Skincare, makeup, haircare, fragrance -> Beauty. Rewards and loyalty program info -> keep=false."
+    },
+    {
+      "url": "https://www.adorebeauty.com.au/cms/adore-rewards.html",
+      "category_hint": "Australian online beauty retailer. Skincare, makeup, haircare, fragrance -> Beauty. Rewards and loyalty program info -> keep=false."
+    }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",

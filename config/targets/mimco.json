@@ -1,6 +1,11 @@
 {
   "brand": "Mimco",
-  "source_url": "https://www.mimco.com.au/",
+  "source_url": [
+    {
+      "url": "https://www.mimco.com.au/",
+      "category_hint": "Women's handbags, jewelry, wallets, and accessories -> Womens. Always Womens."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

@@ -1,20 +1,15 @@
 {
-  "brand": "Wild Rhino",
+  "brand": "Amazon Toys",
   "source_url": [
     {
-      "url": "https://wildrhinoshoes.com.au/",
-      "category_hint": "Men's and women's leather footwear -> Footwear. Always Footwear."
+      "url": "https://www.amazon.com.au/toys-games/b/?node=4852617051",
+      "category_hint": "Amazon Toys category page. Toys, board games, action figures, puzzles -> Toys."
     }
   ],
   "spider": "image_promo",
-  "extraction_strategy": "hybrid",
-  "text_selectors": [
-    ".topbar__message"
-  ],
-  "screenshot_selectors": [
-    ".hero__block-image",
-    ".hero__image"
-  ],
+  "extraction_strategy": "screenshot",
+  "text_selectors": [],
+  "screenshot_selectors": [],
   "min_image_width": 400,
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,

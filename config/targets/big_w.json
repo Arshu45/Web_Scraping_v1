@@ -3,7 +3,7 @@
   "source_url": [
     {
       "url": "https://www.bigw.com.au",
-      "category_hint": "Australian mass-market department store. Pet food and groceries -> Others. Clothing -> Kids or Womens or Menswear (use product text). Toys and games -> Toys. Homewares, bedding, and storage -> Home. Clearance promotions -> use product keyword to pick the most specific category."
+      "category_hint": "Australian mass-market department store. Pet food and groceries -> Others. Clothing -> Kids or Womens or Menswear (use product text). Toys and games -> Toys. Homewares, bedding, and storage -> Home. Clearance promotions -> use product keyword to pick the most specific category. Storewide or ambiguous sales -> Others."
     }
   ],
   "spider": "image_promo",

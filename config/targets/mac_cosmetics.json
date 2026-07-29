@@ -1,8 +1,14 @@
 {
   "brand": "MAC",
   "source_url": [
-    "https://www.maccosmetics.com.au/products/17307/products/makeup/goodbyes/goodbyes", 
-    "https://m.maccosmetics.com.au/offer-details"
+    {
+      "url": "https://www.maccosmetics.com.au/products/17307/products/makeup/goodbyes/goodbyes",
+      "category_hint": "Professional makeup, cosmetics, and skincare -> Beauty. Always Beauty."
+    },
+    {
+      "url": "https://m.maccosmetics.com.au/offer-details",
+      "category_hint": "Professional makeup, cosmetics, and skincare -> Beauty. Always Beauty."
+    }
   ],
   "spider": "image_promo",
   "extraction_strategy": "text",
@@ -15,7 +21,12 @@
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
   "exclude_url_patterns": [
-    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,

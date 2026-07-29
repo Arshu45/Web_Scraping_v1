@@ -1,7 +1,10 @@
 {
   "brand": "Superdry",
   "source_url": [
-    "https://superdry.com.au/"
+    {
+      "url": "https://superdry.com.au/",
+      "category_hint": "Casual streetwear, jackets, hoodies -> Menswear or Womens depending on context."
+    }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
@@ -17,7 +20,12 @@
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
   "exclude_url_patterns": [
-    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,

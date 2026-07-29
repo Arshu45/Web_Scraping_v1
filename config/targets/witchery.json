@@ -1,9 +1,13 @@
 {
   "brand": "Witchery",
-  "source_url": "https://www.witchery.com.au/",
+  "source_url": [
+    {
+      "url": "https://www.witchery.com.au/",
+      "category_hint": "Women's fashion, shoes, and accessories -> Womens. Always Womens."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
-
   "text_selectors": [
     "div[class*='tw-max-w-[1440px]']",
     "div[class*='SignupFooter']",
@@ -11,17 +15,14 @@
     "header",
     "[data-type='RichText'] p"
   ],
-
   "screenshot_selectors": [
     "div[class*='tw-max-w-[1440px]']",
     "[data-type='SignupFooter']"
   ],
-
   "cta_selectors": [
     "a[href='/sale/']",
     "a[href*='subscriber']"
   ],
-
   "exclude_selectors": [
     "nav",
     "footer",
@@ -31,7 +32,6 @@
     ".search",
     ".logo"
   ],
-
   "exclude_url_patterns": [
     "/logo",
     "/icon",
@@ -40,11 +40,9 @@
     "payment",
     "brand-logo"
   ],
-
   "min_image_width": 400,
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
-
   "request_delay_seconds": 4,
   "scroll_depth": 3
 }

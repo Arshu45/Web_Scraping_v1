@@ -3,11 +3,11 @@
   "source_url": [
     {
       "url": "https://www.bonds.com.au/",
-      "category_hint": "Australian underwear and basics brand. Warehouse sales and storewide 'prices from $X' promotions -> split between Womens and Menswear. Kids underwear and basics -> Kids. Do not assign Others for any clothing deal."
+      "category_hint": "Apparel retailer. Women's clothing, bras, underwear, activewear → Womens. Men's underwear, tees, socks, sleepwear → Menswear. Babywear & kids clothing → Kids. Storewide promotions → assign by product keywords. Never use Others for apparel."
     },
     {
       "url": "https://www.bonds.com.au/sale.html",
-      "category_hint": "Bonds sale page. Discounted underwear and basics -> Womens or Menswear. Kids sale items -> Kids. Up to X% off promotions -> Womens or Menswear unless children's products are mentioned."
+      "category_hint": "Sale & clearance. Women's → Womens. Men's → Menswear. Baby & kids → Kids. Storewide promotions → assign by product keywords."
     }
   ],
   "spider": "image_promo",

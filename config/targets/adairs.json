@@ -1,6 +1,11 @@
 {
   "brand": "Adairs",
-  "source_url": "https://www.adairs.com.au",
+  "source_url": [
+    {
+      "url": "https://www.adairs.com.au",
+      "category_hint": "Australian homewares, bedding, linen, furniture, and home decor retailer. All promotions -> Home."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

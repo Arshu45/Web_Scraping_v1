@@ -1,6 +1,11 @@
 {
   "brand": "Taking Shape",
-  "source_url": "https://takingshape.com/AU/",
+  "source_url": [
+    {
+      "url": "https://takingshape.com/AU/",
+      "category_hint": "Plus-size women's fashion brand. All clothing -> Womens. Always Womens."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

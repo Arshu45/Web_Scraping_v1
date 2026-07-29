@@ -1,9 +1,13 @@
 {
   "brand": "Strandbags",
-  "source_url": "https://www.strandbags.com.au/",
+  "source_url": [
+    {
+      "url": "https://www.strandbags.com.au/",
+      "category_hint": "Handbags, luggage, suitcases, backpacks -> Womens (handbags/purses) or Entertainment (travel gear/luggage)."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
-
   "text_selectors": [
     ".announcement-bar__link p",
     ".announcement-bar__link",
@@ -16,7 +20,6 @@
     ".banner__content",
     ".banner-content"
   ],
-
   "screenshot_selectors": [
     "img[src*='MODULE_']",
     "img[src*='Collection_Page_Banner']",
@@ -29,18 +32,15 @@
     ".hero img",
     ".banner img"
   ],
-
   "banner_selectors": [
     "img[src*='MODULE_']",
     "img[src*='Collection_Page_Banner']",
     "img[src*='CB_1200x500']",
     ".hero-media__image"
   ],
-
   "min_image_width": 700,
   "min_image_height": 250,
   "min_aspect_ratio": 1.6,
-
   "exclude_url_patterns": [
     "/logo",
     ".svg",
@@ -57,7 +57,6 @@
     "swatch",
     "3226164"
   ],
-
   "request_delay_seconds": 4,
   "scroll_depth": 3
 }

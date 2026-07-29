@@ -1,14 +1,15 @@
 {
   "brand": "Harvey Norman",
-  "source_url": "https://www.harveynorman.com.au/",
+  "source_url": [
+    {
+      "url": "https://www.harveynorman.com.au/",
+      "category_hint": "Electronics, computers, TVs, appliances -> Entertainment. Furniture, bedding, mattresses -> Home."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
-  "text_selectors": [
-   
-  ],
-  "screenshot_selectors": [
-    
-  ],
+  "text_selectors": [],
+  "screenshot_selectors": [],
   "min_image_width": 400,
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,

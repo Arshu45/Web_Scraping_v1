@@ -1,6 +1,11 @@
 {
   "brand": "Review",
-  "source_url": "https://review-australia.com",
+  "source_url": [
+    {
+      "url": "https://review-australia.com",
+      "category_hint": "Women's vintage-inspired dresses and fashion -> Womens. Always Womens."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
@@ -18,9 +23,14 @@
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
   "exclude_url_patterns": [
-    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": true
+  "enabled": false
 }

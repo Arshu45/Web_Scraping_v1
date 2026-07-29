@@ -1,6 +1,11 @@
 {
   "brand": "Veronika Maine",
-  "source_url": "https://www.veronikamaine.com.au/",
+  "source_url": [
+    {
+      "url": "https://www.veronikamaine.com.au/",
+      "category_hint": "Women's contemporary fashion brand. All clothing -> Womens. Always Womens."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

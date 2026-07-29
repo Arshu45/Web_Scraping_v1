@@ -1,6 +1,11 @@
 {
   "brand": "Triumph",
-  "source_url": "https://au.triumph.com/",
+  "source_url": [
+    {
+      "url": "https://au.triumph.com/",
+      "category_hint": "Lingerie, bras, and women's underwear -> Womens. Always Womens."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [],
@@ -9,7 +14,12 @@
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
   "exclude_url_patterns": [
-    "/logo", "/icon", "/avatar", "social", "payment", "brand-logo"
+    "/logo",
+    "/icon",
+    "/avatar",
+    "social",
+    "payment",
+    "brand-logo"
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,

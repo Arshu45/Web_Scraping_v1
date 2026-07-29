@@ -1,6 +1,11 @@
 {
   "brand": "Kitchen Warehouse",
-  "source_url": "https://www.kitchenwarehouse.com.au",
+  "source_url": [
+    {
+      "url": "https://www.kitchenwarehouse.com.au",
+      "category_hint": "Cookware, kitchen appliances, knives, tableware -> Home. Always Home."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

@@ -1,6 +1,11 @@
 {
   "brand": "Seed Heritage",
-  "source_url": "https://www.seedheritage.com/ix",
+  "source_url": [
+    {
+      "url": "https://www.seedheritage.com/ix",
+      "category_hint": "Fashion for women, kids, and babies. Women's clothing -> Womens. Children's and baby -> Kids."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

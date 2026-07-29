@@ -3,7 +3,7 @@
   "source_url": [
     {
       "url": "https://www.adidas.com.au/",
-      "category_hint": "Global sportswear brand. Running, training, and lifestyle apparel. Clothing promotions -> Menswear or Womens. Shoes and sneakers -> Footwear. Student discounts (e.g. UNiDAYS) -> keep=true, categorise by product type mentioned."
+      "category_hint": "Global sportswear brand. Running, training, and lifestyle apparel. Clothing promotions -> Menswear. Shoes and sneakers -> Footwear. Student discounts (e.g. UNiDAYS) -> keep=true, categorise by product type mentioned."
     }
   ],
   "spider": "image_promo",
