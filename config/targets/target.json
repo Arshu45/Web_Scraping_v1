@@ -1,6 +1,11 @@
 {
   "brand": "Target",
-  "source_url": "https://www.target.com.au",
+  "source_url": [
+    {
+      "url": "https://www.target.com.au",
+      "category_hint": "Australian mass-market retailer. Kids clothing and schoolwear -> Kids. Toys and games -> Toys. Homewares and furniture -> Home. Women's clothing and fashion -> Womens. Men's clothing -> Menswear. Clearance promotions mentioning 'Clothing, Footwear and Home' or 'Clearance' -> use the most specific product keyword from promo text. Never Others for clothing or homewares."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

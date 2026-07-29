@@ -1,6 +1,11 @@
 {
   "brand": "BIG W",
-  "source_url": "https://www.bigw.com.au",
+  "source_url": [
+    {
+      "url": "https://www.bigw.com.au",
+      "category_hint": "Australian mass-market department store. Pet food and groceries -> Others. Clothing -> Kids or Womens or Menswear (use product text). Toys and games -> Toys. Homewares, bedding, and storage -> Home. Clearance promotions -> use product keyword to pick the most specific category."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

@@ -1,6 +1,11 @@
 {
   "brand": "Harris Scarfe",
-  "source_url": "https://www.harrisscarfe.com.au/en-au?srsltid=AfmBOooWhoUmoP2eP1IPcXQ6-jnrPFXZHMZqWtlQsbp7Da_V99UTU8jo",
+  "source_url": [
+    {
+      "url": "https://www.harrisscarfe.com.au/en-au?srsltid=AfmBOooWhoUmoP2eP1IPcXQ6-jnrPFXZHMZqWtlQsbp7Da_V99UTU8jo",
+      "category_hint": "Australian department store. Homewares, cookware, bedding, and storage -> Home. Electrical goods, TVs, and appliances -> Entertainment. Clothing and underwear clearance -> Womens or Menswear. Footwear -> Footwear. 'Friends Pay Less' and winter sale promotions -> categorise by product type mentioned."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
@@ -41,4 +46,3 @@
   "scroll_depth": 3,
   "enabled": false
 }
- 

@@ -1,6 +1,11 @@
 {
   "brand": "The Good Guys",
-  "source_url": "https://www.thegoodguys.com.au/",
+  "source_url": [
+    {
+      "url": "https://www.thegoodguys.com.au/",
+      "category_hint": "Australian consumer electronics and appliances retailer. Laptops, computers, phones, TVs, fridges, washing machines, dishwashers, audio equipment -> Entertainment. EPIC DEAL, MONSTER DEAL, COMPUTER SELLOUT, BONUS VIA REDEMPTION promotions -> Entertainment. Always assign Entertainment for this brand — never Others."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

@@ -1,8 +1,14 @@
 {
   "brand": "Cotton On",
   "source_url": [
-    "https://cottonon.com/AU/",
-    "https://cottonon.com/AU/cottononkids/"
+    {
+      "url": "https://cottonon.com/AU/",
+      "category_hint": "Australian fashion retailer (main store). Storewide and clearance sales -> Womens or Menswear. When promo text is ambiguous and mentions no specific gender, prefer Womens as this is the dominant department on the main store page."
+    },
+    {
+      "url": "https://cottonon.com/AU/cottononkids/",
+      "category_hint": "Cotton On Kids department page. All promotions from this URL -> Kids, regardless of promo wording."
+    }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
