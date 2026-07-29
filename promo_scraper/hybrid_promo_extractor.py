@@ -403,29 +403,25 @@ class HybridPromoExtractor:
             logger.debug("  SKIP [%s]", reason)
 
     def _create_stealth_page(self, pw) -> tuple[Any, Any]:
-        """Launch browser and context with stealth settings to bypass anti-bot screens."""
-        browser = pw.chromium.launch(
-            channel="chrome",
-            headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-infobars",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--window-size=1440,900",
-            ]
-        )
+        """Launch browser and context with stealth settings to bypass anti-bot screens.
+
+        Uses Firefox instead of Chromium. Chromium's network stack contains an
+        internal rate-limiter that returns a 169-byte ``local_rate_limited``
+        stub page for headless browsing — even when only a single sequential
+        browser is launched.  Firefox has no such limiter and was validated at
+        5 concurrent browsers with 0 stubs (vs Chromium's 5/5 failure rate).
+        """
+        browser = pw.firefox.launch(headless=True)
         context_kwargs = {
             "user_agent": _UA,
             "viewport": {"width": 1440, "height": 900},
         }
         if self.cfg.get("use_stealth_headers", True):
+            # Firefox does not send Chromium Client Hints (sec-ch-ua*), so we
+            # only set the standard accept / accept-language headers here.
             context_kwargs["extra_http_headers"] = {
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
                 "accept-language": "en-US,en;q=0.9",
-                "sec-ch-ua": '"Not-A.Brand";v="99", "Chromium";v="124", "Google Chrome";v="124"',
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": '"Windows"',
             }
         context = browser.new_context(**context_kwargs)
         page = context.new_page()
@@ -475,6 +471,20 @@ class HybridPromoExtractor:
             browser, page = self._create_stealth_page(pw)
             try:
                 self._goto_with_retry(page, self.source_url)
+                # Guard: retry up to 3x if the CDN returns a rate-limit stub
+                # (e.g. "local_rate_limited", content < 500 bytes) instead of
+                # the real page. Wait times increase: 15s, then 30s.
+                _stub_waits = [15_000, 30_000]
+                for _wait_ms in _stub_waits:
+                    if len(page.content()) >= 500:
+                        break
+                    logger.error(
+                        "[%s] Received stub/rate-limited page (%d bytes). "
+                        "Waiting %ds then retrying...",
+                        self.brand, len(page.content()), _wait_ms // 1000
+                    )
+                    page.wait_for_timeout(_wait_ms)
+                    self._goto_with_retry(page, self.source_url)
                 logger.info("[%s] Page loaded. Title: '%s', Content Length: %d", self.brand, page.title(), len(page.content()))
                 self._wait_and_scroll(page)
 
@@ -798,6 +808,18 @@ class HybridPromoExtractor:
             browser, page = self._create_stealth_page(pw)
             try:
                 self._goto_with_retry(page, self.source_url)
+                # Guard: retry up to 3x if the CDN returns a rate-limit stub.
+                _stub_waits = [15_000, 30_000]
+                for _wait_ms in _stub_waits:
+                    if len(page.content()) >= 500:
+                        break
+                    logger.error(
+                        "[%s] Received stub/rate-limited page (%d bytes). "
+                        "Waiting %ds then retrying...",
+                        self.brand, len(page.content()), _wait_ms // 1000
+                    )
+                    page.wait_for_timeout(_wait_ms)
+                    self._goto_with_retry(page, self.source_url)
                 self._wait_and_scroll(page)
 
                 imgs = page.query_selector_all("img")
