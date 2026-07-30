@@ -1,12 +1,27 @@
 {
   "brand": "Triumph",
   "source_url": [
-    "https://au.triumph.com/collections/flash-sale",
-    "https://au.triumph.com/collections/member-offer-lingerie-sets",
-    "https://au.triumph.com/collections/member-offer-new-arrivals",
-    "https://au.triumph.com/collections/member-offer-underwear",
-    "https://au.triumph.com/collections/member-offer-sloggi-zero-feel"
-  ],
+  {
+    "url": "https://au.triumph.com/collections/flash-sale",
+    "category_hint": "Women's lingerie & intimate apparel brand. All promotions → Womens."
+  },
+  {
+    "url": "https://au.triumph.com/collections/member-offer-lingerie-sets",
+    "category_hint": "Women's lingerie & intimate apparel brand. All promotions → Womens."
+  },
+  {
+    "url": "https://au.triumph.com/collections/member-offer-new-arrivals",
+    "category_hint": "Women's lingerie & intimate apparel brand. All promotions → Womens."
+  },
+  {
+    "url": "https://au.triumph.com/collections/member-offer-underwear",
+    "category_hint": "Women's lingerie & intimate apparel brand. All promotions → Womens."
+  },
+  {
+    "url": "https://au.triumph.com/collections/member-offer-sloggi-zero-feel",
+    "category_hint": "Women's lingerie & intimate apparel brand. All promotions → Womens."
+  }
+],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

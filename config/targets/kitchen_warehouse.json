@@ -3,20 +3,29 @@
   "source_url": [
     {
       "url": "https://www.kitchenwarehouse.com.au",
-      "category_hint": "Cookware, kitchen appliances, knives, tableware -> Home. Always Home."
+      "category_hint": "Kitchenware & home retailer. All promotions → Home."
+    },
+    {
+      "url": "https://www.kitchenwarehouse.com.au/price-beat",
+      "category_hint": "Kitchenware & home retailer. All promotions → Home."
     }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
-    "a[href*='wolstead-mineral'] span",
+    ".frontastic-markdown",
+    ".tasticWrapper",
+    "span.Typography_body_MD__oZwYU:not(:has-text('RRP')):not(:has-text('Was')):not(:has-text('was'))",
+    "span.Typography_semibold_weight__yoyH0:not(:has-text('RRP')):not(:has-text('Was')):not(:has-text('was'))",
     ".wolstead-campaign-heading",
-    ".wolstead-campaign-copy"
+    ".wolstead-campaign-copy",
+    "a[href*='wolstead-mineral'] span"
   ],
   "screenshot_selectors": [
-    "img[alt*='Le Creuset']",
-    "img[alt*='30% off']",
-    "img[alt*='Cook\\'s specials']"
+    "div.flex.items-start.gap-2",
+    "[class*='hero'] img",
+    "img[src*='banner']",
+    "img[src*='campaign']"
   ],
   "min_image_width": 400,
   "min_image_height": 150,
@@ -29,7 +38,8 @@
     "payment",
     "brand-logo"
   ],
+  "promo_keywords_pattern": "\\d+\\s*%|\\$\\d+(?:\\.\\d+)?\\s*off|\\b\\d+\\s*for\\s*[\\$£€¥₹]?\\d+|buy\\s*\\d+\\s*for\\s*\\d+|price\\s*beat.*\\d+%|beat\\s*it\\s*by\\s*\\d+%",
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": false
+  "enabled": true
 }
