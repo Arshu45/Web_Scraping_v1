@@ -3,7 +3,7 @@
   "source_url": [
     {
       "url": "https://www.bigw.com.au",
-      "category_hint": "Australian department store. Homewares, furniture, bedding, appliances & kitchenware → Home. TVs, audio & gaming → Entertainment. Cosmetics & skincare → Beauty. Clothing → Womens, Menswear or Kids (use product keywords). Toys, games, scooters & hoverboards → Toys. Pet food, pet accessories, groceries, luggage & travel accessories → Others. Clearance promotions → assign by product keywords. Storewide or ambiguous promotions → Others."
+      "category_hint": "Australian department store. Homewares, furniture, bedding, appliances & kitchenware → Home. TVs, audio & gaming → Entertainment. Cosmetics & skincare → Beauty. Clothing → Womens, Menswear or Kids (use product keywords). Toys, games, scooters & hoverboards → Toys. Pet food, pet accessories, groceries, luggage & travel accessories → Others. Always prioritize product keywords over sale terms. Promotions mentioning both Home and Clothing (e.g. 'Clothing & Home Clearance') → Home. Use Others only for promotions with no identifiable product category."
     }
   ],
   "spider": "image_promo",
@@ -31,5 +31,5 @@
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": false
+  "enabled": true
 }

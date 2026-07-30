@@ -3,7 +3,7 @@
   "source_url": [
     {
       "url": "https://cottonon.com/AU/",
-      "category_hint": "Australian fashion retailer (main store). Storewide and clearance sales -> Womens or Menswear. When promo text is ambiguous and mentions no specific gender, prefer Womens as this is the dominant department on the main store page."
+      "category_hint": "Australian fashion retailer (main store). Storewide and clearance sales -> Womens or Menswear."
     },
     {
       "url": "https://cottonon.com/AU/cottononkids/",
@@ -35,5 +35,5 @@
   "min_aspect_ratio": 1.0,
   "request_delay_seconds": 4,
   "scroll_depth": 2,
-  "enabled": false
+  "enabled": true
 }

@@ -1,0 +1,38 @@
+{
+  "brand": "The Iconic Beauty",
+  "source_url": [
+    {
+      "url": "https://www.theiconic.com.au/discover-beauty-wellness/",
+      "category_hint": "Beauty and wellness landing page on THE ICONIC. All skincare, makeup, fragrance, hair care, and wellness offers -> Beauty. Always Beauty."
+    }
+  ],
+  "spider": "image_promo",
+  "extraction_strategy": "hybrid",
+  "text_selectors": [],
+  "screenshot_selectors": [
+    "img.applyHeight",
+    ".applyHeight",
+    "[class*='applyHeight']",
+    "div.dm-sale",
+    "div.row.discover-more",
+    "section.discover-more-content",
+    "[class*='Hero']",
+    "[class*='hero']",
+    "[class*='Banner']",
+    "[class*='banner']",
+    "[class*='Editorial']",
+    "[class*='editorial']",
+    "[class*='Promo']",
+    "[class*='promo']",
+    "[class*='Campaign']",
+    "div.c015",
+    "div.c01238",
+    "div.c01241"
+  ],
+  "min_image_width": 300,
+  "min_image_height": 100,
+  "min_aspect_ratio": 0.8,
+  "request_delay_seconds": 4,
+  "scroll_depth": 2,
+  "enabled": true
+}

@@ -1,11 +1,11 @@
 {
   "brand": "Jockey",
   "source_url": [
-    {
-      "url": "https://jockey.com.au/",
-      "category_hint": "Underwear, sleepwear, and loungewear for men and women -> Menswear or Womens depending on context."
-    }
-  ],
+  {
+    "url": "https://jockey.com.au/",
+    "category_hint": "Underwear, sleepwear & loungewear retailer. Women's products → Womens. Men's products → Menswear. If gender is unclear, default to Womens."
+  }
+],
   "spider": "image_promo",
   "extraction_strategy": "text",
   "text_selectors": [
@@ -25,5 +25,5 @@
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": false
+  "enabled": true
 }

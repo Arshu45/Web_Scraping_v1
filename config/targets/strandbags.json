@@ -3,7 +3,7 @@
   "source_url": [
     {
       "url": "https://www.strandbags.com.au/",
-      "category_hint": "Handbags, luggage, suitcases, backpacks -> Womens (handbags/purses) or Entertainment (travel gear/luggage)."
+      "category_hint": "Handbags, Bags, luggage & travel accessories retailer. All promotions → Entertainment."
     }
   ],
   "spider": "image_promo",
@@ -58,5 +58,6 @@
     "3226164"
   ],
   "request_delay_seconds": 4,
-  "scroll_depth": 3
+  "scroll_depth": 3,
+  "enabled": true
 }
