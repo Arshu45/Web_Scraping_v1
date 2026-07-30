@@ -58,5 +58,5 @@
   "nav_retry_attempts": 4,
   "request_delay_seconds": 6,
   "scroll_depth": 3,
-  "enabled": true
+  "enabled": false
 }

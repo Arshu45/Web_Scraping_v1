@@ -47,5 +47,5 @@
   "request_delay_seconds": 6,
   "scroll_depth": 3,
   "promo_keywords_pattern": "\\d+\\s*%|\\boff\\b|\\bsale\\b|\\bdeal\\b|\\bsave\\b|\\bdiscount\\b|\\bextra\\b|free\\s+(?:[a-zA-Z]+\\s+)?(?:delivery|shipping|gift|returns?)|\\bget\\s+\\d+\\s*free\\b|\\bfree\\s+\\w+|buy\\s*\\d+[,\\s]+get\\s*\\d+|clearance|\\boffer\\b|\\bpromo(?:tion)?\\b|\\bcode\\b|\\bcoupon\\b|\\bvoucher\\b|\\bbogo\\b|buy\\s*\\d+\\s*get\\s*\\d+|\\b\\d+\\s*for\\s*\\d+\\b|\\bmembers?\\b.{0,15}\\b(save|only|exclusive|price|pricing)\\b|\\bfor\\s+[A-Za-z]{0,3}[\\$£€¥₹]\\d|\\bfrom\\s+[A-Za-z]{0,3}[\\$£€¥₹]\\d|\\bonly\\s+[A-Za-z]{0,3}[\\$£€¥₹]\\d|[\\$£€¥₹]\\d+\\s*\\*|[\\$£€¥₹]\\d+\\s*each",
-  "enabled": true
+  "enabled": false
 }
