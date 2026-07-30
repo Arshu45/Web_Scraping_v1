@@ -308,22 +308,20 @@ class HybridPromoExtractor:
         else:
             self.model = os.getenv("VISION_LLM_MODEL") or self.GEMINI_MODEL
 
-        # Init API client (only needed for screenshot / image strategies)
-        if self.strategy in ("screenshot", "image", "hybrid"):
-            if self.use_litellm:
-                import litellm
-                litellm.suppress_debug_info = True
-                self._client = litellm
-            else:
-                api_key = os.getenv("GEMINI_API_KEY")
-                if not api_key:
-                    raise EnvironmentError(
-                        "GEMINI_API_KEY is not set. Add it to .env.\n"
-                        "Free key: https://aistudio.google.com/app/apikey"
-                    )
-                self._client = genai.Client(api_key=api_key)
+        # Init API client — needed by all strategies for _categorize_offer_items
+        # (joint categorization + dedup LLM pass), not just screenshot/image.
+        if self.use_litellm:
+            import litellm
+            litellm.suppress_debug_info = True
+            self._client = litellm
         else:
-            self._client = None
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                raise EnvironmentError(
+                    "GEMINI_API_KEY is not set. Add it to .env.\n"
+                    "Free key: https://aistudio.google.com/app/apikey"
+                )
+            self._client = genai.Client(api_key=api_key)
 
         logger.info(
             "HybridPromoExtractor ready: brand='%s', strategy='%s', model=%s (via %s)%s",
@@ -1209,6 +1207,14 @@ class HybridPromoExtractor:
             elif not primary_item.get("category") or primary_item.get("category") not in allowed:
                 primary_item["category"] = self.cfg.get("category") or "Others"
 
+            # Post-processing override: if the LLM chose "Others" but the brand config
+            # declares an explicit category, override it. A brand like Bobbi Brown that
+            # declares category="Beauty" should never have offers fall into "Others".
+            config_category = self.cfg.get("category")
+            if primary_item["category"] == "Others" and config_category and config_category in allowed:
+                logger.info("  Category override: LLM chose 'Others' but config declares '%s' → using '%s'", config_category, config_category)
+                primary_item["category"] = config_category
+
             logger.info("  KEPT & CANONICALIZED: '%s' (Category: %s) [Merged %d raw offer(s): %s]", primary_item["title"], primary_item["category"], len(valid_ids), raw_titles)
             final_items.append(primary_item)
 
@@ -1220,9 +1226,13 @@ class HybridPromoExtractor:
                 final_items.append(item)
 
         # Final safety guarantee: no item ever has category=None or unlisted category
+        config_category = self.cfg.get("category")
         for item in final_items:
             if not item.get("category") or item.get("category") not in allowed:
-                item["category"] = self.cfg.get("category") or "Others"
+                item["category"] = config_category or "Others"
+            # Also override "Others" if config declares a specific category
+            if item.get("category") == "Others" and config_category and config_category in allowed:
+                item["category"] = config_category
 
         logger.info(
             "Brand semantic deduplication: %d raw offers merged into %d canonical promotions",

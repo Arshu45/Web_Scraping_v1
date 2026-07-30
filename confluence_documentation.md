@@ -63,7 +63,7 @@ graph TD
 ### 3.1 Target Configuration File Structure
 Each site has a standalone, declarative configuration file inside `config/targets/` defining elements to target:
 - `brand`: Brand string representation.
-- `source_url`: URL of the promotion/sale landing page. Can be a single string URL, a list of URL strings, or a list of `{"url": "...", "category": "..."}` objects for per-page category context.
+- `source_url`: URL of the promotion/sale landing page. Can be a single string URL, a list of URL strings, or a list of `{"url": "...", "category_hint": "..."}` objects for per-page LLM category context.
 - `enabled`: Optional boolean (`true` | `false`) to temporarily enable or disable the scraper target. Defaults to `true` if not specified.
 - `extraction_strategy`: One of `"text"`, `"screenshot"`, `"image"`, or `"hybrid"` (text + screenshot combined).
 - `text_selectors`: CSS selectors targeting banners, headers, and promo blocks for text extraction.
@@ -71,6 +71,9 @@ Each site has a standalone, declarative configuration file inside `config/target
 - `banner_selectors`: CSS selectors for `<img>` src URL collection (image strategy only).
 - `request_delay_seconds`: Delay between Vision API calls (default 4).
 - `scroll_depth`: Scroll iterations to trigger lazy loading (default 3).
+- `category`: Top-level fallback category. If the LLM assigns "Others" but this field is set (e.g. `"Beauty"`), the system overrides the LLM's choice. Ensures brand-specific targets always produce the correct category.
+- `category_hint`: Per-URL or top-level string injected into the LLM categorization prompt as a strong prior. Guides the model to prefer this category for ambiguous offers (e.g. `"Cosmetics and skincare -> Beauty. Always Beauty."`).
+- `promo_keywords_pattern`: Optional custom regex for promotional text filtering. Overrides the default broad pattern when set.
 
 ### 3.2 In-Browser JavaScript Element Extraction
 To prevent rate limiting and handle hidden mobile banners or responsive designs (which fail standard screenshotting), the scraper uses Playwright to evaluate DOM elements. For hidden images, a browser-side fetch fetches image bytes directly using the browser's credentials to bypass CDN/CORS protections. All strategies use stealth browser settings (custom user-agent, `sec-ch-ua` headers, WebDriver property removal) to bypass Cloudflare/Akamai bot detection.
@@ -80,6 +83,7 @@ After extraction, all offers for a brand are sent to the LLM in a single batched
 1. **Filtering** — removes non-promotional items (loyalty programs, newsletter signups, shipping notices).
 2. **Semantic deduplication** — groups offers referring to the same campaign and selects a clean canonical title.
 3. **Categorization** — assigns each offer to one of the categories defined in the `PROMO_CATEGORIES` environment variable.
+4. **Category fallback override** — if the LLM assigns "Others" but the target config declares a top-level `category` field, the system overrides the LLM's choice. This ensures brands like Bobbi Brown (cosmetics) always categorize as "Beauty" rather than falling through to "Others".
 
 ### 3.4 SHA-256 Deduplication
 Before writing promotions to the database, a unique SHA-256 fingerprint is calculated:
@@ -160,9 +164,10 @@ erDiagram
 | Variable | Description | Default |
 |---|---|---|
 | `DATABASE_URL` | PostgreSQL connection string | *(required)* |
+| `LLM_PROVIDER` | LLM routing: `litellm` (gateway) or `gemini` (direct) | `gemini` |
 | `LITELLM_API_BASE` | LiteLLM gateway URL (enables LiteLLM mode) | *(unset = direct Gemini)* |
 | `LITELLM_API_KEY` | API key for LiteLLM gateway | — |
-| `VISION_LLM_MODEL` | Model name for vision/text LLM calls | `gemini-2.5-flash` |
+| `VISION_LLM_MODEL` | Model name for vision/text LLM calls | `gemini/gemini-2.5-flash` |
 | `GEMINI_API_KEY` | Direct Gemini API key (when not using LiteLLM) | — |
 | `PROMO_CATEGORIES` | Comma-separated category taxonomy for LLM classifier | *(required)* |
 | `MAX_CONCURRENT_BROWSERS` | Max parallel Playwright browsers in Prefect flow | `4` |
@@ -188,6 +193,12 @@ python scripts/run_hybrid_promo_scraper.py --target config/targets/the_iconic.js
 ```bash
 python flows/master_pipeline.py
 ```
+
+The master pipeline generates a structured summary report containing:
+- **Per-brand results table** — success/error status, offers extracted, stored, and cost per brand
+- **Aggregate stats** — total brands, offers, stored count, cost, and success rate
+- **Failed Sites table** — brands that encountered errors during extraction
+- **Zero Offers table** — brands that completed successfully but extracted no promotional offers
 
 ### Database Initialization
 To create tables on a fresh setup:
