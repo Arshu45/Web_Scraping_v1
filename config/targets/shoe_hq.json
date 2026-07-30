@@ -1,8 +1,14 @@
 {
-  "brand": "Shoe HQ",
+  "brand": "Shoe hq",
   "source_url": [
-    "https://www.shoehq.com.au/",
-    "https://www.shoehq.com.au/collections/sale"
+    {
+      "url": "https://www.shoehq.com.au/",
+      "category_hint": "Women's footwear retailer. All shoes, boots, sandals & sneakers → Womens."
+    },
+    {
+      "url": "https://www.shoehq.com.au/collections/sale",
+      "category_hint": "Women's footwear sale. All promotions → Womens."
+    }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",

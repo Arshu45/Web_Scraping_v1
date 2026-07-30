@@ -1,6 +1,11 @@
 {
   "brand": "Tommy Hilfiger",
-  "source_url": "https://au.tommy.com/promotions",
+  "source_url": [
+    {
+      "url": "https://au.tommy.com/promotions",
+      "category_hint": "Premium apparel, denim, and underwear -> Menswear or Womens depending on context."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [

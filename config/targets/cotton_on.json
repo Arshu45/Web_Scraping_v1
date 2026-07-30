@@ -1,8 +1,14 @@
 {
   "brand": "Cotton On",
   "source_url": [
-    "https://cottonon.com/AU/",
-    "https://cottonon.com/AU/cottononkids/"
+    {
+      "url": "https://cottonon.com/AU/",
+      "category_hint": "Australian fashion retailer (main store). Storewide and clearance sales -> Womens or Menswear."
+    },
+    {
+      "url": "https://cottonon.com/AU/cottononkids/",
+      "category_hint": "Cotton On Kids department page. All promotions from this URL -> Kids, regardless of promo wording."
+    }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
@@ -15,7 +21,8 @@
     ".swiper-slide img",
     ".subscription-footer-copy",
     ".meganavbox-title-sale-rectangle",
-    ".meganavbox-sale a"
+    ".meganavbox-sale a",
+    ".co-category-quick-link"
   ],
   "screenshot_selectors": [
     ".trade-tiles-four-offers",
@@ -28,5 +35,5 @@
   "min_aspect_ratio": 1.0,
   "request_delay_seconds": 4,
   "scroll_depth": 2,
-  "enabled": true
+  "enabled": false
 }

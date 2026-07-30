@@ -1,9 +1,15 @@
 {
   "brand": "Clinique",
   "source_url": [
-    "https://www.clinique.com.au/",
-    "https://www.clinique.com.au/smartrewards"
-  ],
+  {
+    "url": "https://www.clinique.com.au/",
+    "category_hint": "Dermatologist-developed beauty brand. All product promotions → Beauty. Loyalty program info → keep=false."
+  },
+  {
+    "url": "https://www.clinique.com.au/smartrewards",
+    "category_hint": "Dermatologist-developed beauty brand. All product promotions → Beauty. Loyalty program info → keep=false."
+  }
+],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "category": "Beauty",
@@ -33,5 +39,5 @@
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": true
+  "enabled": false
 }

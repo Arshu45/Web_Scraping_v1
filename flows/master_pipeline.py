@@ -41,6 +41,25 @@ def scrape_brand_target(target: dict) -> dict:
 def generate_report(hybrid_results: list[dict]):
     logger = get_run_logger()
 
+    # ── Classify results ──────────────────────────────────────────────
+    failed: list[dict] = []       # tasks that returned an error key
+    zero_offers: list[dict] = []  # completed but extracted nothing
+    success: list[dict] = []      # extracted ≥ 1 offer
+
+    for h in hybrid_results:
+        if "error" in h:
+            failed.append(h)
+        elif h.get("offers_extracted", 0) == 0:
+            zero_offers.append(h)
+        else:
+            success.append(h)
+
+    total_brands  = len(hybrid_results)
+    total_offers  = sum(h.get("offers_extracted", 0) for h in hybrid_results)
+    total_stored  = sum(h.get("offers_stored", 0)    for h in hybrid_results)
+    total_cost    = sum(h.get("estimated_cost_usd", 0.0) for h in hybrid_results)
+
+    # ── 1. Main results table ─────────────────────────────────────────
     report_lines = [
         "",
         "╔══════════════════════════════════════════════╗",
@@ -61,8 +80,57 @@ def generate_report(hybrid_results: list[dict]):
             report_lines.append(f"║  ✓ {brand:<14} | Offers: {offers:<3} | Stored: {stored:<3} | Cost: ${cost:.6f} ║")
 
     report_lines.append("╚══════════════════════════════════════════════╝")
-    report = "\n".join(report_lines)
 
+    # ── 2. Aggregate stats ────────────────────────────────────────────
+    report_lines += [
+        "",
+        "┌──────────────────────────────────────────────┐",
+        "│  AGGREGATE STATS                             │",
+        "├──────────────────────────────────────────────┤",
+        f"│  Total Brands:   {total_brands:<5}                        │",
+        f"│  Total Offers:   {total_offers:<5}  (Stored: {total_stored:<5})        │",
+        f"│  Total Cost:     ${total_cost:<10.6f}                  │",
+        f"│  Success Rate:   {len(success)}/{total_brands} brands with offers       │",
+        "└──────────────────────────────────────────────┘",
+    ]
+
+    # ── 3. Failed sites table ─────────────────────────────────────────
+    report_lines += [
+        "",
+        "┌──────────────────────────────────────────────┐",
+        f"│  ❌ FAILED SITES ({len(failed)} brands)                     │",
+        "├──────────────────────────────────────────────┤",
+    ]
+    if failed:
+        for h in failed:
+            brand = h.get("brand", "Unknown")
+            err = h.get("error", "unknown error")[:45]
+            report_lines.append(f"│  {brand:<18} │ {err:<25} │")
+    else:
+        report_lines.append("│  (none — all tasks completed successfully)   │")
+    report_lines.append("└──────────────────────────────────────────────┘")
+
+    # ── 4. Zero offers table ──────────────────────────────────────────
+    report_lines += [
+        "",
+        "┌──────────────────────────────────────────────┐",
+        f"│  ⚠️  ZERO OFFERS ({len(zero_offers)} brands)                    │",
+        "├──────────────────────────────────────────────┤",
+    ]
+    if zero_offers:
+        for h in zero_offers:
+            brand = h.get("brand", "Unknown")
+            cost = h.get("estimated_cost_usd", 0.0)
+            if cost > 0:
+                reason = f"tried (cost=${cost:.4f})"
+            else:
+                reason = "no selectors / no promos"
+            report_lines.append(f"│  {brand:<18} │ {reason:<25} │")
+    else:
+        report_lines.append("│  (none — all brands extracted offers)        │")
+    report_lines.append("└──────────────────────────────────────────────┘")
+
+    report = "\n".join(report_lines)
     logger.info(report)
 
 
@@ -89,7 +157,7 @@ def master_pipeline():
     from dotenv import load_dotenv
     load_dotenv()
 
-    MAX_CONCURRENT_BROWSERS = int(os.getenv("MAX_CONCURRENT_BROWSERS", "4"))
+    MAX_CONCURRENT_BROWSERS = int(os.getenv("MAX_CONCURRENT_BROWSERS", "5"))
 
     logger = get_run_logger()
     logger.info("🚀 Master pipeline starting...")

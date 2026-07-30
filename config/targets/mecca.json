@@ -1,6 +1,11 @@
 {
   "brand": "Mecca",
-  "source_url": "https://www.mecca.com/en-au/",
+  "source_url": [
+    {
+      "url": "https://www.mecca.com/en-au/",
+      "category_hint": "Cosmetics, skincare, makeup, and fragrance retailer -> Beauty. Always Beauty."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [],

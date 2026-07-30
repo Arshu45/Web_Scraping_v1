@@ -231,15 +231,23 @@ class HybridPromoExtractor:
             if isinstance(entry, dict):
                 url = entry.get("url") or entry.get("source_url")
                 category = entry.get("category") or entry.get("business_category")
+                category_hint = entry.get("category_hint")
             else:
                 url = entry
                 category = target_config.get("category")
+                # Top-level category_hint fallback for plain-string source_url entries
+                category_hint = target_config.get("category_hint")
             if url:
-                self.source_entries.append({"url": url, "category": category})
+                self.source_entries.append({"url": url, "category": category, "category_hint": category_hint})
 
         self.source_urls = [entry["url"] for entry in self.source_entries]
         self.source_url = self.source_urls[0] if self.source_urls else ""
         self.current_category = self.source_entries[0].get("category") if self.source_entries else target_config.get("category")
+        # Per-URL category hint injected into the LLM categorization prompt;
+        # updated on each iteration of the run() loop.
+        self.current_category_hint: str | None = (
+            self.source_entries[0].get("category_hint") if self.source_entries else target_config.get("category_hint")
+        )
         self.strategy   = target_config.get("extraction_strategy", "image")
         self.allowed_categories = self._load_allowed_categories()
         self.category_list_text = ", ".join(self.allowed_categories)
@@ -300,22 +308,20 @@ class HybridPromoExtractor:
         else:
             self.model = os.getenv("VISION_LLM_MODEL") or self.GEMINI_MODEL
 
-        # Init API client (only needed for screenshot / image strategies)
-        if self.strategy in ("screenshot", "image", "hybrid"):
-            if self.use_litellm:
-                import litellm
-                litellm.suppress_debug_info = True
-                self._client = litellm
-            else:
-                api_key = os.getenv("GEMINI_API_KEY")
-                if not api_key:
-                    raise EnvironmentError(
-                        "GEMINI_API_KEY is not set. Add it to .env.\n"
-                        "Free key: https://aistudio.google.com/app/apikey"
-                    )
-                self._client = genai.Client(api_key=api_key)
+        # Init API client — needed by all strategies for _categorize_offer_items
+        # (joint categorization + dedup LLM pass), not just screenshot/image.
+        if self.use_litellm:
+            import litellm
+            litellm.suppress_debug_info = True
+            self._client = litellm
         else:
-            self._client = None
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                raise EnvironmentError(
+                    "GEMINI_API_KEY is not set. Add it to .env.\n"
+                    "Free key: https://aistudio.google.com/app/apikey"
+                )
+            self._client = genai.Client(api_key=api_key)
 
         logger.info(
             "HybridPromoExtractor ready: brand='%s', strategy='%s', model=%s (via %s)%s",
@@ -334,7 +340,15 @@ class HybridPromoExtractor:
         for source_entry in self.source_entries:
             self.source_url = source_entry["url"]
             self.current_category = source_entry.get("category") or self.cfg.get("category")
-            logger.info("Starting extraction → %s [category=%s, strategy=%s]", self.source_url, self.current_category or "uncategorized", self.strategy)
+            # Update the per-URL hint so _categorize_offer_items sees the right context
+            self.current_category_hint = source_entry.get("category_hint") or self.cfg.get("category_hint")
+            logger.info(
+                "Starting extraction → %s [category=%s, hint=%s, strategy=%s]",
+                self.source_url,
+                self.current_category or "uncategorized",
+                self.current_category_hint or "none",
+                self.strategy,
+            )
 
             offer_items: list[dict] = []
 
@@ -419,29 +433,25 @@ class HybridPromoExtractor:
             logger.debug("  SKIP [%s]", reason)
 
     def _create_stealth_page(self, pw) -> tuple[Any, Any]:
-        """Launch browser and context with stealth settings to bypass anti-bot screens."""
-        browser = pw.chromium.launch(
-            channel="chrome",
-            headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-infobars",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--window-size=1440,900",
-            ]
-        )
+        """Launch browser and context with stealth settings to bypass anti-bot screens.
+
+        Uses Firefox instead of Chromium. Chromium's network stack contains an
+        internal rate-limiter that returns a 169-byte ``local_rate_limited``
+        stub page for headless browsing — even when only a single sequential
+        browser is launched.  Firefox has no such limiter and was validated at
+        5 concurrent browsers with 0 stubs (vs Chromium's 5/5 failure rate).
+        """
+        browser = pw.firefox.launch(headless=True)
         context_kwargs = {
             "user_agent": _UA,
             "viewport": {"width": 1440, "height": 900},
         }
         if self.cfg.get("use_stealth_headers", True):
+            # Firefox does not send Chromium Client Hints (sec-ch-ua*), so we
+            # only set the standard accept / accept-language headers here.
             context_kwargs["extra_http_headers"] = {
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
                 "accept-language": "en-US,en;q=0.9",
-                "sec-ch-ua": '"Not-A.Brand";v="99", "Chromium";v="124", "Google Chrome";v="124"',
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": '"Windows"',
             }
         context = browser.new_context(**context_kwargs)
         page = context.new_page()
@@ -491,6 +501,20 @@ class HybridPromoExtractor:
             browser, page = self._create_stealth_page(pw)
             try:
                 self._goto_with_retry(page, self.source_url)
+                # Guard: retry up to 3x if the CDN returns a rate-limit stub
+                # (e.g. "local_rate_limited", content < 500 bytes) instead of
+                # the real page. Wait times increase: 15s, then 30s.
+                _stub_waits = [15_000, 30_000]
+                for _wait_ms in _stub_waits:
+                    if len(page.content()) >= 500:
+                        break
+                    logger.error(
+                        "[%s] Received stub/rate-limited page (%d bytes). "
+                        "Waiting %ds then retrying...",
+                        self.brand, len(page.content()), _wait_ms // 1000
+                    )
+                    page.wait_for_timeout(_wait_ms)
+                    self._goto_with_retry(page, self.source_url)
                 logger.info("[%s] Page loaded. Title: '%s', Content Length: %d", self.brand, page.title(), len(page.content()))
                 self._wait_and_scroll(page)
 
@@ -814,6 +838,18 @@ class HybridPromoExtractor:
             browser, page = self._create_stealth_page(pw)
             try:
                 self._goto_with_retry(page, self.source_url)
+                # Guard: retry up to 3x if the CDN returns a rate-limit stub.
+                _stub_waits = [15_000, 30_000]
+                for _wait_ms in _stub_waits:
+                    if len(page.content()) >= 500:
+                        break
+                    logger.error(
+                        "[%s] Received stub/rate-limited page (%d bytes). "
+                        "Waiting %ds then retrying...",
+                        self.brand, len(page.content()), _wait_ms // 1000
+                    )
+                    page.wait_for_timeout(_wait_ms)
+                    self._goto_with_retry(page, self.source_url)
                 self._wait_and_scroll(page)
 
                 imgs = page.query_selector_all("img")
@@ -1089,6 +1125,14 @@ class HybridPromoExtractor:
             for idx, item in enumerate(offer_items)
         ]
 
+        # Build the optional category hint line separately to keep prompt assembly clean
+        _hint_line = (
+            f"   - Brand/URL context hint: {self.current_category_hint}\n"
+            "     Apply this as a STRONG PRIOR — when promo text is a storewide sale, warehouse sale, "
+            "or a bare discount with no product detail, prefer the hinted category over 'Others'.\n"
+            if self.current_category_hint else ""
+        )
+
         prompt = (
             f"You analyze, categorize, and deduplicate retail promotions for brand '{self.brand}'.\n"
             "Perform the following 3 tasks carefully:\n\n"
@@ -1096,7 +1140,10 @@ class HybridPromoExtractor:
             "   - First-purchase / first-order / new customer welcome incentives (e.g., 'Enjoy 15% off your first purchase', '10% off your first order', welcome coupons)\n"
             "   - Loyalty/rewards program point accumulations or milestone achievements (e.g., 'Collect 750 more ICONS', '1000 ICONS = $10 REWARD', 'EARN 2x ICONS')\n"
             "   - Newsletter signup incentives (e.g., 'Sign up to THE ICONIC News for your $20 voucher')\n"
-            "   - General shipping/locker rules or logistics notices (e.g., 'FREE Express Delivery When You Use a Free, 24/7 Parcel Locker')\n\n"
+            "   - General shipping/locker rules or logistics notices (e.g., 'FREE Express Delivery When You Use a Free, 24/7 Parcel Locker')\n"
+            "   - Standalone delivery/shipping threshold notices with NO attached product deal "
+            "(e.g., 'FREE DELIVERY ON ORDERS OVER $150', 'FAST & FREE DELIVERY', 'FREE EXPRESS SHIPPING ON ALL ORDERS'). "
+            "EXCEPTION: keep if free delivery is explicitly bundled into a specific product offer (e.g., 'Buy X + Get Free Delivery').\n\n"
             "2. SEMANTIC DEDUPLICATION & CANONICALIZATION:\n"
             "   - Several extracted texts may refer to the identical underlying offer, discount, or campaign\n"
             "     (e.g., 'Clearance New Styles Added Up to 50% off selected clearance clothing, footwear and home' vs 'Up to 50% off selected clearance!* Shop now').\n"
@@ -1104,17 +1151,11 @@ class HybridPromoExtractor:
             "   - Provide a clean, complete, and standard 'canonical_title' for the merged promotion:\n"
             "     * Preserve all key promotion components present in the text: discount/badge (e.g., '$500 OFF', 'EPIC DEAL'), product/category name (e.g., 'Samsung Galaxy S25 256GB Navy'), and final sale price / original price (e.g., '$887', 'Was $1387').\n"
             "     * Format product deal offers clearly, e.g.: '$500 OFF Samsung Galaxy S25 256GB Navy - $887 (Was $1387)' or 'EPIC DEAL Lenovo IdeaPad Slim 3 14\" i5 8GB 512GB Laptop - $799'.\n"
-            "     * Remove CTA clutter like 'Shop now', '*Terms apply', 'While stocks last', ticket symbols (¤), or raw UI button text.\n\n"
+            "     * Remove CTA clutter like 'Shop now', '*Terms apply', 'While stocks last', ticket symbols (\u00a4), or raw UI button text.\n\n"
             "3. CATEGORIZATION:\n"
             f"   - Assign exactly one category from this list only: {self.category_list_text}.\n"
-            "   - The source_url path is the PRIMARY categorization signal — follow it strictly:\n"
-            "     * URL contains '/men/'       → Menswear\n"
-            "     * URL contains '/women/'     → Womens\n"
-            "     * URL contains '/kids/'      → Kids\n"
-            "     * URL contains '/beauty/'    → Beauty\n"
-            "     * URL contains '/home/'      → Home\n"
-            "   - Also use the 'current_category' field in the record as a strong per-URL hint.\n"
-            "   - Only use 'Others' when no more specific category fits AND the source_url gives no clear signal.\n"
+            "   - Use promo text, brand, and source_url as strong evidence.\n"
+            f"{_hint_line}"
             "Return JSON only as a list of objects:\n"
             "[\n"
             "  {\n"
@@ -1202,19 +1243,16 @@ class HybridPromoExtractor:
                 elif not source_item.get("category") or source_item.get("category") not in allowed:
                     source_item["category"] = self.cfg.get("category") or "Others"
 
-                if cluster_items_added == 0:
-                    logger.info(
-                        "  KEPT & CANONICALIZED: '%s' (Category: %s) [Merged %d raw offer(s): %s]",
-                        source_item["title"], source_item["category"], len(valid_ids), raw_titles
-                    )
-                else:
-                    logger.info(
-                        "  + FAN-OUT row: '%s' (Category: %s) -> %s",
-                        source_item["title"], source_item["category"], item_url
-                    )
+            # Post-processing override: if the LLM chose "Others" but the brand config
+            # declares an explicit category, override it. A brand like Bobbi Brown that
+            # declares category="Beauty" should never have offers fall into "Others".
+            config_category = self.cfg.get("category")
+            if primary_item["category"] == "Others" and config_category and config_category in allowed:
+                logger.info("  Category override: LLM chose 'Others' but config declares '%s' → using '%s'", config_category, config_category)
+                primary_item["category"] = config_category
 
-                final_items.append(source_item)
-                cluster_items_added += 1
+            logger.info("  KEPT & CANONICALIZED: '%s' (Category: %s) [Merged %d raw offer(s): %s]", primary_item["title"], primary_item["category"], len(valid_ids), raw_titles)
+            final_items.append(primary_item)
 
         # Append any items that were left out of the LLM JSON (safety fallback)
         for idx, item in enumerate(offer_items):
@@ -1224,9 +1262,13 @@ class HybridPromoExtractor:
                 final_items.append(item)
 
         # Final safety guarantee: no item ever has category=None or unlisted category
+        config_category = self.cfg.get("category")
         for item in final_items:
             if not item.get("category") or item.get("category") not in allowed:
-                item["category"] = self.cfg.get("category") or "Others"
+                item["category"] = config_category or "Others"
+            # Also override "Others" if config declares a specific category
+            if item.get("category") == "Others" and config_category and config_category in allowed:
+                item["category"] = config_category
 
         logger.info(
             "Brand semantic deduplication: %d raw offers merged into %d canonical promotions",

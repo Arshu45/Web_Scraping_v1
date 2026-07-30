@@ -1,33 +1,14 @@
 {
-  "brand": "The Iconic",
+  "brand": "The Iconic Beauty",
   "source_url": [
     {
-      "url": "https://www.theiconic.com.au/men/",
-      "category": "Menswear"
-    },
-    {
-      "url": "https://www.theiconic.com.au/kids/",
-      "category": "Kids"
-    },
-    {
       "url": "https://www.theiconic.com.au/discover-beauty-wellness/",
-      "category": "Beauty"
+      "category_hint": "Beauty and wellness landing page on THE ICONIC. All skincare, makeup, fragrance, hair care, and wellness offers -> Beauty. Always Beauty."
     }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
-  "text_selectors": [
-    ".discover-more-content b",
-    ".discover-more-content a",
-    ".usp-container a",
-    "h1.catalog-title",
-    "a[href*='new-customer']",    
-    "a[href*='referafriend']",
-    "span[data-ng-show*='newsletter']",
-    ".c01240",
-    ".c01243",
-    "a[href*='campaign=lp-']"
-  ],
+  "text_selectors": [],
   "screenshot_selectors": [
     "img.applyHeight",
     ".applyHeight",
@@ -53,5 +34,5 @@
   "min_aspect_ratio": 0.8,
   "request_delay_seconds": 4,
   "scroll_depth": 2,
-  "enabled": true
+  "enabled": false
 }

@@ -1,8 +1,14 @@
 {
   "brand": "Clarins",
   "source_url": [
-    "https://www.clarins.com.au/",
-    "https://www.clarins.com.au/offers/AU_specialoffers.html"
+    {
+      "url": "https://www.clarins.com.au/",
+      "category_hint": "Skincare, cosmetics, and body care products -> Beauty. Always Beauty."
+    },
+    {
+      "url": "https://www.clarins.com.au/offers/AU_specialoffers.html",
+      "category_hint": "Skincare, cosmetics, and body care products -> Beauty. Always Beauty."
+    }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
@@ -33,5 +39,5 @@
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": true
+  "enabled": false
 }
