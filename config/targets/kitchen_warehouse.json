@@ -41,5 +41,5 @@
   "promo_keywords_pattern": "\\d+\\s*%|\\$\\d+(?:\\.\\d+)?\\s*off|\\b\\d+\\s*for\\s*[\\$£€¥₹]?\\d+|buy\\s*\\d+\\s*for\\s*\\d+|price\\s*beat.*\\d+%|beat\\s*it\\s*by\\s*\\d+%",
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": true
+  "enabled": false
 }

@@ -67,7 +67,7 @@
         "categories": ["Kids", "Toys", "Others"]
       },
       "Uniqlo": {},
-      "Best and less": {
+      "Best & Less": {
         "categories": ["Kids", "Toys", "Others"]
       },
       "Next Australia": {}
@@ -198,7 +198,9 @@
       "BIG W": {
         "categories": ["Home"]
       },
-      "Kitchen Warehouse": {}
+      "Kitchen Warehouse": {
+        "categories": ["Home"]
+      }
     }
   }
 }

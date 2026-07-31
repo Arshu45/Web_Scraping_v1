@@ -1243,16 +1243,16 @@ class HybridPromoExtractor:
                 elif not source_item.get("category") or source_item.get("category") not in allowed:
                     source_item["category"] = self.cfg.get("category") or "Others"
 
-            # Post-processing override: if the LLM chose "Others" but the brand config
-            # declares an explicit category, override it. A brand like Bobbi Brown that
-            # declares category="Beauty" should never have offers fall into "Others".
-            config_category = self.cfg.get("category")
-            if primary_item["category"] == "Others" and config_category and config_category in allowed:
-                logger.info("  Category override: LLM chose 'Others' but config declares '%s' → using '%s'", config_category, config_category)
-                primary_item["category"] = config_category
+                # Post-processing override: if item category is "Others" but the brand config
+                # declares an explicit category, override it. A brand like Bobbi Brown that
+                # declares category="Beauty" should never have offers fall into "Others".
+                config_category = self.cfg.get("category")
+                if source_item.get("category") == "Others" and config_category and config_category in allowed:
+                    logger.info("  Category override: LLM chose 'Others' but config declares '%s' → using '%s'", config_category, config_category)
+                    source_item["category"] = config_category
 
-            logger.info("  KEPT & CANONICALIZED: '%s' (Category: %s) [Merged %d raw offer(s): %s]", primary_item["title"], primary_item["category"], len(valid_ids), raw_titles)
-            final_items.append(primary_item)
+                logger.info("  KEPT & CANONICALIZED: '%s' (Category: %s) [Merged %d raw offer(s): %s]", source_item["title"], source_item["category"], len(valid_ids), raw_titles)
+                final_items.append(source_item)
 
         # Append any items that were left out of the LLM JSON (safety fallback)
         for idx, item in enumerate(offer_items):

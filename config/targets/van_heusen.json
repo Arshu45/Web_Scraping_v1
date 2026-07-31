@@ -20,5 +20,5 @@
   "promo_keywords_pattern": "\\d+\\s*%|\\boff\\b|\\b\\d+\\s*for\\s*[\\$£€¥₹]?\\d+|buy\\s*\\d+[,\\s]*get\\s*\\d+|\\bsave\\b|\\bdiscount\\b",
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": true
+  "enabled": false
 }
