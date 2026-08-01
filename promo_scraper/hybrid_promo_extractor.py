@@ -515,8 +515,24 @@ class HybridPromoExtractor:
                     )
                     page.wait_for_timeout(_wait_ms)
                     self._goto_with_retry(page, self.source_url)
+                is_stub = len(page.content()) < 500 or "Verifying your connection" in page.title() or "local_rate_limited" in page.content()
+                if is_stub:
+                    logger.info("[%s] Playwright received bot verification / rate-limit stub (title='%s', %d bytes). Attempting HTTP fallback fetch via httpx...", self.brand, page.title(), len(page.content()))
+                    try:
+                        resp = httpx.get(
+                            self.source_url,
+                            follow_redirects=True,
+                            headers={"User-Agent": _UA, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+                            timeout=20.0,
+                        )
+                        if resp.status_code == 200 and len(resp.text) >= 500 and "Verifying your connection" not in resp.text:
+                            logger.info("[%s] HTTP fallback fetch succeeded (%d bytes). Setting page content.", self.brand, len(resp.text))
+                            page.set_content(resp.text)
+                    except Exception as exc:
+                        logger.warning("[%s] HTTP fallback fetch failed: %s", self.brand, exc)
                 logger.info("[%s] Page loaded. Title: '%s', Content Length: %d", self.brand, page.title(), len(page.content()))
-                self._wait_and_scroll(page)
+                if not is_stub:
+                    self._wait_and_scroll(page)
 
                 # 1. Text Extraction Strategy
                 if self.strategy in ("text", "hybrid"):
@@ -850,7 +866,23 @@ class HybridPromoExtractor:
                     )
                     page.wait_for_timeout(_wait_ms)
                     self._goto_with_retry(page, self.source_url)
-                self._wait_and_scroll(page)
+                is_stub = len(page.content()) < 500 or "Verifying your connection" in page.title() or "local_rate_limited" in page.content()
+                if is_stub:
+                    logger.info("[%s] Playwright received bot verification / rate-limit stub (title='%s', %d bytes). Attempting HTTP fallback fetch via httpx...", self.brand, page.title(), len(page.content()))
+                    try:
+                        resp = httpx.get(
+                            self.source_url,
+                            follow_redirects=True,
+                            headers={"User-Agent": _UA, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+                            timeout=20.0,
+                        )
+                        if resp.status_code == 200 and len(resp.text) >= 500 and "Verifying your connection" not in resp.text:
+                            logger.info("[%s] HTTP fallback fetch succeeded (%d bytes). Setting page content.", self.brand, len(resp.text))
+                            page.set_content(resp.text)
+                    except Exception as exc:
+                        logger.warning("[%s] HTTP fallback fetch failed: %s", self.brand, exc)
+                if not is_stub:
+                    self._wait_and_scroll(page)
 
                 imgs = page.query_selector_all("img")
                 logger.info("Total img tags: %d", len(imgs))
