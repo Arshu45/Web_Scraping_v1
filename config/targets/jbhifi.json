@@ -3,20 +3,30 @@
   "source_url": "https://www.jbhifi.com.au",
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
+
   "text_selectors": [
     "a[aria-label='Hero Banner']",
-    "a[aria-label='Promo Card']"
+    "a[aria-label='Promo Card']",
+
+    "[data-testid='product-card-content']",
+    ".ProductCard_content"
   ],
+
   "screenshot_selectors": [
     "div[data-gaip-type='carousel'] img",
     "a[aria-label='Hero Banner'] + img",
     "img[alt*='Big Brand']",
     "img[src*='Big_Brand_Sellout']",
-    "a[aria-label='Promo Card']"
+    "a[aria-label='Promo Card']",
+
+    "[data-testid='product-card-content']",
+    ".ProductCard_content"
   ],
+
   "min_image_width": 400,
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
+
   "exclude_url_patterns": [
     "/logo",
     "/icon",
@@ -25,7 +35,8 @@
     "payment",
     "brand-logo"
   ],
+
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": false
+  "enabled": true
 }
