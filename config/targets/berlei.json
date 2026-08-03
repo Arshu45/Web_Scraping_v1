@@ -1,6 +1,11 @@
 {
   "brand": "Berlei",
-  "source_url": "https://www.berlei.com.au/",
+  "source_url": [
+    {
+      "url": "https://www.berlei.com.au/",
+      "category_hint": "Women's bras, sports bras, and underwear -> Womens. Always assign Womens for this brand."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
@@ -35,5 +40,5 @@
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": true
+  "enabled": false
 }

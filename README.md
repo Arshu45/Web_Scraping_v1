@@ -7,8 +7,10 @@ A production-grade, concurrent hybrid competitive intelligence system. The platf
 ## System Architecture
 
 ```text
-BRONZE LAYER — Dynamic browser scraping
+BRONZE LAYER — Dynamic browser & anti-bot scraping
   - Parallel Playwright headless scraping via config/targets/*.json
+  - Multi-tier AntiBotBypassService (Playwright Stealth → httpx → curl_cffi TLS impersonation)
+  - Bypasses PerimeterX / HUMAN Security and Cloudflare Managed Challenges (Turnstile / 403 / 429)
   - Text extraction from configured CSS selectors
   - Screenshot/image extraction for banner-like promotional elements
   - Vision LLM extraction for image-based offers
@@ -39,11 +41,13 @@ GOLD LAYER — Streamlit Dashboard
 
 ## Extraction Approach
 
-The scraper uses a hybrid extraction strategy:
+The scraper uses a hybrid extraction strategy with automated anti-bot bypass:
 
+- **Anti-Bot Bypass Architecture (`AntiBotBypassService`)** — Bypasses bot verification screens (Cloudflare Managed Challenges, Turnstile, PerimeterX v2, `local_rate_limited` stubs) by executing a multi-tier fallback cascade. When headless browsers encounter rate limits or 403 blocks, `AntiBotBypassService` uses `curl_cffi` to execute authentic Chrome/Firefox TLS Client Hello (JA3/JA4) impersonation, retrieving the full page DOM.
 - **Text extraction** collects visible promotional text from configured CSS selectors.
 - **Screenshot/image extraction** captures banner-like page elements and sends them to the configured vision LLM.
 - **LLM category classification** runs once per brand scrape as a batched text call. It assigns each extracted offer to one category from the environment-driven taxonomy.
+- **Category fallback override** — if the LLM assigns "Others" but the target config declares a top-level `category` field (e.g. `"category": "Beauty"`), the system overrides the LLM's choice. This ensures brand-specific target configs always produce the correct category.
 - **URL-aware deduplication** keeps identical promo text separate when it appears on different pages, such as `/men/` and `/kids/`.
 
 > If a target config defines **no** `text_selectors` and no `screenshot_selectors`, the extractor skips that phase entirely. No fallback selectors are used.
@@ -171,6 +175,8 @@ existing promotions in the database without scraping anything.
 
 ```text
 .
+├── alembic/                               # Alembic database migration scripts
+├── alembic.ini                             # Alembic configuration
 ├── config/
 │   ├── teams.json                         # Business team routing rules
 │   └── targets/                           # Per-brand scrape configuration (one JSON per brand)
@@ -179,6 +185,7 @@ existing promotions in the database without scraping anything.
 │   └── models.py                          # ORM models: Competitor, Promotion, PromotionTeamAssignment
 ├── flows/
 │   └── master_pipeline.py                 # Prefect flow for parallel scraping
+├── llm/                                   # LLM pricing, metrics, and helper utilities
 ├── promo_scraper/
 │   ├── hybrid_promo_extractor.py          # Core extraction, LLM calls, deduplication, cost tracking
 │   └── pipelines.py                       # Scrapy-compatible DB pipeline
@@ -198,6 +205,7 @@ existing promotions in the database without scraping anything.
 ├── tests/
 │   └── test_team_policy_engine.py         # Unit tests for TeamPolicyEngine routing logic
 ├── requirements.txt
+├── .env.example                           # Environment configuration template
 └── .env                                   # Local configuration and credentials
 ```
 
@@ -259,10 +267,12 @@ Run all enabled targets via Prefect:
 python flows/master_pipeline.py
 ```
 
+> The pipeline generates a summary report with: per-brand results table, aggregate stats, a **Failed Sites** table (brands that errored), and a **Zero Offers** table (brands that completed but extracted nothing).
+
 Run a single target for testing:
 
 ```bash
-python scripts/run_hybrid_promo_scraper.py --target config/targets/the_iconic.json
+python scripts/run_hybrid_promo_scraper.py --target config/targets/bobbi_brown.json
 ```
 
 ### 5. Apply Team Routing
@@ -289,26 +299,44 @@ Each file in `config/targets/` controls how a brand is scraped.
 
 ```json
 {
-  "brand": "The Iconic",
+  "brand": "Bobbi Brown",
   "source_url": [
-    "https://www.theiconic.com.au/men/",
-    "https://www.theiconic.com.au/kids/"
+    {
+      "url": "https://www.bobbibrown.com.au/",
+      "category_hint": "Cosmetics, makeup, and skincare products -> Beauty. Always Beauty."
+    },
+    {
+      "url": "https://www.bobbibrown.com.au/offers",
+      "category_hint": "Cosmetics, makeup, and skincare products -> Beauty. Always Beauty."
+    }
   ],
   "spider": "image_promo",
-  "extraction_strategy": "hybrid",
-  "text_selectors": [".discover-more-content b"],
-  "screenshot_selectors": ["[class*='Banner']"],
+  "extraction_strategy": "text",
+  "category": "Beauty",
+  "text_selectors": [
+    ".content-over-media__text",
+    ".content-block--mpp-header .content-block__line--content"
+  ],
+  "screenshot_selectors": [],
   "min_image_width": 400,
   "min_image_height": 150,
   "min_aspect_ratio": 1.2,
-  "exclude_url_patterns": ["/logo", "/icon", "/avatar", "social", "payment"],
-  "request_delay_seconds": 3,
+  "exclude_url_patterns": ["/logo", "/icon", "social", "payment"],
+  "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": false
+  "enabled": true,
+  "promo_keywords_pattern": "\\d+\\s*%|\\boff\\b|\\bsale\\b"
 }
 ```
 
-`source_url` may be a single string or a list. If both `text_selectors` and `screenshot_selectors` are empty lists, the target is skipped — no fallback selectors are used.
+`source_url` may be a single string, a list of strings, or a list of `{"url": "...", "category_hint": "..."}` objects for per-page LLM context.
+
+- **`category_hint`** (per-URL or top-level): Injected into the LLM categorization prompt as a strong prior. Guides the LLM to prefer this category over "Others" for ambiguous offers.
+- **`category`** (top-level): Fallback category override. If the LLM assigns "Others" but this field is set, the system overrides with this value. Also used as default category fallback.
+- **`promo_keywords_pattern`**: Optional regex override for promotional text filtering. If not set, a broad default pattern is used.
+- **`enabled`**: Set to `false` to temporarily disable a target without deleting it. Defaults to `true`.
+
+If both `text_selectors` and `screenshot_selectors` are empty lists, the extractor skips that phase entirely. No fallback selectors are used.
 
 ---
 

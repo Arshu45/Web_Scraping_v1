@@ -1,6 +1,11 @@
 {
   "brand": "David Jones",
-  "source_url": "https://www.davidjones.com/sale",
+  "source_url": [
+    {
+      "url": "https://www.davidjones.com/sale",
+      "category_hint": "Australian luxury department store. Categorise by product mentioned: Womens, Menswear, Beauty, Home, Kids, Toys, Footwear."
+    }
+  ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
