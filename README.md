@@ -7,8 +7,10 @@ A production-grade, concurrent hybrid competitive intelligence system. The platf
 ## System Architecture
 
 ```text
-BRONZE LAYER — Dynamic browser scraping
+BRONZE LAYER — Dynamic browser & anti-bot scraping
   - Parallel Playwright headless scraping via config/targets/*.json
+  - Multi-tier AntiBotBypassService (Playwright Stealth → httpx → curl_cffi TLS impersonation)
+  - Bypasses PerimeterX / HUMAN Security and Cloudflare Managed Challenges (Turnstile / 403 / 429)
   - Text extraction from configured CSS selectors
   - Screenshot/image extraction for banner-like promotional elements
   - Vision LLM extraction for image-based offers
@@ -39,8 +41,9 @@ GOLD LAYER — Streamlit Dashboard
 
 ## Extraction Approach
 
-The scraper uses a hybrid extraction strategy:
+The scraper uses a hybrid extraction strategy with automated anti-bot bypass:
 
+- **Anti-Bot Bypass Architecture (`AntiBotBypassService`)** — Bypasses bot verification screens (Cloudflare Managed Challenges, Turnstile, PerimeterX v2, `local_rate_limited` stubs) by executing a multi-tier fallback cascade. When headless browsers encounter rate limits or 403 blocks, `AntiBotBypassService` uses `curl_cffi` to execute authentic Chrome/Firefox TLS Client Hello (JA3/JA4) impersonation, retrieving the full page DOM.
 - **Text extraction** collects visible promotional text from configured CSS selectors.
 - **Screenshot/image extraction** captures banner-like page elements and sends them to the configured vision LLM.
 - **LLM category classification** runs once per brand scrape as a batched text call. It assigns each extracted offer to one category from the environment-driven taxonomy.

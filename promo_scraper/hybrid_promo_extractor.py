@@ -253,6 +253,9 @@ class HybridPromoExtractor:
         self.category_list_text = ", ".join(self.allowed_categories)
         self.vision_prompt = VISION_PROMPT_TEMPLATE.format(categories=self.category_list_text)
 
+        from services.anti_bot_bypass_service import AntiBotBypassService
+        self.anti_bot_service = AntiBotBypassService()
+
         # Image filter thresholds
         self.min_width  = target_config.get("min_image_width",  400)
         self.min_height = target_config.get("min_image_height", 150)
@@ -456,22 +459,70 @@ class HybridPromoExtractor:
         context = browser.new_context(**context_kwargs)
         page = context.new_page()
         if self.cfg.get("use_webdriver_patch", True):
+            # Layer 1 – remove the explicit webdriver flag
             page.add_init_script("delete navigator.__proto__.webdriver;")
+
+            # Layer 2 – mask WebGL hardware strings (GPU fingerprinting)
+            page.add_init_script("""
+                const _getParam = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(param) {
+                    if (param === 37445) return 'Intel Inc.';
+                    if (param === 37446) return 'Intel Iris OpenGL Engine';
+                    return _getParam.call(this, param);
+                };
+            """)
+
+            # Layer 3 – stub navigator.plugins (empty array = headless signal)
+            page.add_init_script("""
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5],
+                });
+                Object.defineProperty(navigator, 'mimeTypes', {
+                    get: () => [1, 2, 3],
+                });
+            """)
+
+            # Layer 4 – window.chrome stub (its absence is a primary CF signal)
+            page.add_init_script("""
+                window.chrome = { runtime: {} };
+            """)
+
+            # Layer 5 – navigator.languages (empty array is detectable)
+            page.add_init_script("""
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en'],
+                });
+            """)
+
+            # Layer 6 – Permissions.query override (headless returns 'denied',
+            #           real browsers return 'default' for notification permission)
+            page.add_init_script("""
+                const _query = window.navigator.permissions.query;
+                window.navigator.permissions.query = (params) =>
+                    params.name === 'notifications'
+                        ? Promise.resolve({ state: Notification.permission })
+                        : _query(params);
+            """)
         return browser, page
 
-    def _goto_with_retry(self, page, url: str) -> None:
+    def _goto_with_retry(self, page, url: str) -> int:
         """
         Navigate with a small retry budget on timeout. A transient bot-check
         or slow first paint previously meant a single failed page.goto killed
         the entire source with zero offers; this gives it one more shot.
+
+        Returns:
+            The HTTP status code of the final successful navigation (200 if
+            the response object is unavailable), so callers can forward it to
+            resolve_page_content() for early 403/429 bot-block detection.
         """
         from playwright.sync_api import TimeoutError as PWTimeout
 
         last_exc: Exception | None = None
         for attempt in range(1, self.nav_retry_attempts + 1):
             try:
-                page.goto(url, timeout=60_000, wait_until="domcontentloaded")
-                return
+                response = page.goto(url, timeout=60_000, wait_until="domcontentloaded")
+                return response.status if response else 200
             except PWTimeout as e:
                 last_exc = e
                 logger.warning("Navigation timeout (attempt %d/%d) for %s", attempt, self.nav_retry_attempts, url)
@@ -479,6 +530,7 @@ class HybridPromoExtractor:
                     page.wait_for_timeout(3_000)
         if last_exc:
             raise last_exc
+        return 200
 
     @staticmethod
     def _norm_key(s: str) -> str:
@@ -500,38 +552,13 @@ class HybridPromoExtractor:
         with sync_playwright() as pw:
             browser, page = self._create_stealth_page(pw)
             try:
-                self._goto_with_retry(page, self.source_url)
-                # Guard: retry up to 3x if the CDN returns a rate-limit stub
-                # (e.g. "local_rate_limited", content < 500 bytes) instead of
-                # the real page. Wait times increase: 15s, then 30s.
-                _stub_waits = [15_000, 30_000]
-                for _wait_ms in _stub_waits:
-                    if len(page.content()) >= 500:
-                        break
-                    logger.error(
-                        "[%s] Received stub/rate-limited page (%d bytes). "
-                        "Waiting %ds then retrying...",
-                        self.brand, len(page.content()), _wait_ms // 1000
-                    )
-                    page.wait_for_timeout(_wait_ms)
-                    self._goto_with_retry(page, self.source_url)
-                is_stub = len(page.content()) < 500 or "Verifying your connection" in page.title() or "local_rate_limited" in page.content()
-                if is_stub:
-                    logger.info("[%s] Playwright received bot verification / rate-limit stub (title='%s', %d bytes). Attempting HTTP fallback fetch via httpx...", self.brand, page.title(), len(page.content()))
-                    try:
-                        resp = httpx.get(
-                            self.source_url,
-                            follow_redirects=True,
-                            headers={"User-Agent": _UA, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
-                            timeout=20.0,
-                        )
-                        if resp.status_code == 200 and len(resp.text) >= 500 and "Verifying your connection" not in resp.text:
-                            logger.info("[%s] HTTP fallback fetch succeeded (%d bytes). Setting page content.", self.brand, len(resp.text))
-                            page.set_content(resp.text)
-                    except Exception as exc:
-                        logger.warning("[%s] HTTP fallback fetch failed: %s", self.brand, exc)
-                logger.info("[%s] Page loaded. Title: '%s', Content Length: %d", self.brand, page.title(), len(page.content()))
-                if not is_stub:
+                nav_status = self._goto_with_retry(page, self.source_url)
+                bypass_res = self.anti_bot_service.resolve_page_content(self.source_url, page, status_code=nav_status)
+                logger.info(
+                    "[%s] Page resolved via %s. Title: '%s', Content Length: %d",
+                    self.brand, bypass_res.strategy_used, bypass_res.title, len(page.content())
+                )
+                if not bypass_res.is_blocked:
                     self._wait_and_scroll(page)
 
                 # 1. Text Extraction Strategy
@@ -853,35 +880,13 @@ class HybridPromoExtractor:
         with sync_playwright() as pw:
             browser, page = self._create_stealth_page(pw)
             try:
-                self._goto_with_retry(page, self.source_url)
-                # Guard: retry up to 3x if the CDN returns a rate-limit stub.
-                _stub_waits = [15_000, 30_000]
-                for _wait_ms in _stub_waits:
-                    if len(page.content()) >= 500:
-                        break
-                    logger.error(
-                        "[%s] Received stub/rate-limited page (%d bytes). "
-                        "Waiting %ds then retrying...",
-                        self.brand, len(page.content()), _wait_ms // 1000
-                    )
-                    page.wait_for_timeout(_wait_ms)
-                    self._goto_with_retry(page, self.source_url)
-                is_stub = len(page.content()) < 500 or "Verifying your connection" in page.title() or "local_rate_limited" in page.content()
-                if is_stub:
-                    logger.info("[%s] Playwright received bot verification / rate-limit stub (title='%s', %d bytes). Attempting HTTP fallback fetch via httpx...", self.brand, page.title(), len(page.content()))
-                    try:
-                        resp = httpx.get(
-                            self.source_url,
-                            follow_redirects=True,
-                            headers={"User-Agent": _UA, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
-                            timeout=20.0,
-                        )
-                        if resp.status_code == 200 and len(resp.text) >= 500 and "Verifying your connection" not in resp.text:
-                            logger.info("[%s] HTTP fallback fetch succeeded (%d bytes). Setting page content.", self.brand, len(resp.text))
-                            page.set_content(resp.text)
-                    except Exception as exc:
-                        logger.warning("[%s] HTTP fallback fetch failed: %s", self.brand, exc)
-                if not is_stub:
+                nav_status = self._goto_with_retry(page, self.source_url)
+                bypass_res = self.anti_bot_service.resolve_page_content(self.source_url, page, status_code=nav_status)
+                logger.info(
+                    "[%s] Image URL collection resolved via %s. Title: '%s'",
+                    self.brand, bypass_res.strategy_used, bypass_res.title,
+                )
+                if not bypass_res.is_blocked:
                     self._wait_and_scroll(page)
 
                 imgs = page.query_selector_all("img")
