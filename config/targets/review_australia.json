@@ -9,18 +9,18 @@
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
-    "a[aria-label='hero']",
-    "a[href*='/collections/']",
-    ".klaviyo-form-richtext",
     "[data-topbar-message]",
+    "custom-marquee .slide",
+    ".text-base-medium",
+    ".klaviyo-form-richtext",
     "[id^='hero-template--'] h2",
     "[id^='hero-template--'] p",
     ".js-newsletter-form h3"
   ],
   "screenshot_selectors": [
-    "a[aria-label='hero']",
-    "a[href*='/collections/']",
-    ".plp-banner",
+    "[is='top-bar']",
+    "custom-marquee",
+    ".absolute.fit picture img",
     ".plp-banner img"
   ],
   "min_image_width": 400,
@@ -32,9 +32,11 @@
     "/avatar",
     "social",
     "payment",
-    "brand-logo"
+    "brand-logo",
+    ".svg",
+    "svg"
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": false
+  "enabled": true
 }

@@ -10,8 +10,9 @@
   "extraction_strategy": "screenshot",
   "text_selectors": [],
   "screenshot_selectors": [
-    "img[alt*='Final Winter']",
-    "a[href='/shop/jj-new-all'] img"
+    "picture img",
+    "img[src*='espot']",
+    "img[src*='Offer_Banner']"
   ],
   "min_image_width": 400,
   "min_image_height": 150,
