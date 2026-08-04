@@ -435,75 +435,107 @@ class HybridPromoExtractor:
         else:
             logger.debug("  SKIP [%s]", reason)
 
-    def _create_stealth_page(self, pw) -> tuple[Any, Any]:
-        """Launch browser and context with stealth settings to bypass anti-bot screens.
+    def _create_stealth_page(self, pw, engine: str | None = None) -> tuple[Any, Any]:
+        """Launch browser and context with stealth settings.
 
-        Uses Firefox instead of Chromium. Chromium's network stack contains an
-        internal rate-limiter that returns a 169-byte ``local_rate_limited``
-        stub page for headless browsing — even when only a single sequential
-        browser is launched.  Firefox has no such limiter and was validated at
-        5 concurrent browsers with 0 stubs (vs Chromium's 5/5 failure rate).
+        Args:
+            engine: Browser engine to use. If None, reads config["browser_type"]
+                    (defaulting to "firefox").
+                    - "firefox": Avoids Chromium's internal ``local_rate_limited`` stub
+                      in batch runs (default for all sites).
+                    - "chrome": Real Google Chrome — authentic JA3/TLS + Client Hints.
+                      Auto-used as fallback when Firefox gets a WAF rejection.
+                    - "chromium": Playwright-bundled Chromium with Chrome args.
         """
-        browser = pw.firefox.launch(headless=True)
+        engine = (engine or self.cfg.get("browser_type", "firefox")).lower()
+
+        if engine in ("chrome", "chromium"):
+            try:
+                browser = pw.chromium.launch(
+                    channel="chrome" if engine == "chrome" else None,
+                    headless=True,
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--disable-infobars",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--window-size=1440,900",
+                    ]
+                )
+            except Exception as err:
+                logger.warning("Failed to launch %s (%s) — falling back to firefox", engine, err)
+                browser = pw.firefox.launch(headless=True)
+
+            headers = {
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "accept-language": "en-US,en;q=0.9",
+                "sec-ch-ua": '"Not-A.Brand";v="99", "Chromium";v="124", "Google Chrome";v="124"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+            }
+        else:
+            browser = pw.firefox.launch(headless=True)
+            headers = {
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "accept-language": "en-US,en;q=0.9",
+            }
+
         context_kwargs = {
             "user_agent": _UA,
             "viewport": {"width": 1440, "height": 900},
         }
         if self.cfg.get("use_stealth_headers", True):
-            # Firefox does not send Chromium Client Hints (sec-ch-ua*), so we
-            # only set the standard accept / accept-language headers here.
-            context_kwargs["extra_http_headers"] = {
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                "accept-language": "en-US,en;q=0.9",
-            }
+            context_kwargs["extra_http_headers"] = headers
+
         context = browser.new_context(**context_kwargs)
         page = context.new_page()
         if self.cfg.get("use_webdriver_patch", True):
-            # Layer 1 – remove the explicit webdriver flag
             page.add_init_script("delete navigator.__proto__.webdriver;")
-
-            # Layer 2 – mask WebGL hardware strings (GPU fingerprinting)
-            page.add_init_script("""
-                const _getParam = WebGLRenderingContext.prototype.getParameter;
-                WebGLRenderingContext.prototype.getParameter = function(param) {
-                    if (param === 37445) return 'Intel Inc.';
-                    if (param === 37446) return 'Intel Iris OpenGL Engine';
-                    return _getParam.call(this, param);
-                };
-            """)
-
-            # Layer 3 – stub navigator.plugins (empty array = headless signal)
-            page.add_init_script("""
-                Object.defineProperty(navigator, 'plugins', {
-                    get: () => [1, 2, 3, 4, 5],
-                });
-                Object.defineProperty(navigator, 'mimeTypes', {
-                    get: () => [1, 2, 3],
-                });
-            """)
-
-            # Layer 4 – window.chrome stub (its absence is a primary CF signal)
-            page.add_init_script("""
-                window.chrome = { runtime: {} };
-            """)
-
-            # Layer 5 – navigator.languages (empty array is detectable)
-            page.add_init_script("""
-                Object.defineProperty(navigator, 'languages', {
-                    get: () => ['en-US', 'en'],
-                });
-            """)
-
-            # Layer 6 – Permissions.query override (headless returns 'denied',
-            #           real browsers return 'default' for notification permission)
-            page.add_init_script("""
-                const _query = window.navigator.permissions.query;
-                window.navigator.permissions.query = (params) =>
-                    params.name === 'notifications'
-                        ? Promise.resolve({ state: Notification.permission })
-                        : _query(params);
-            """)
         return browser, page
+
+    @staticmethod
+    def _is_waf_firefox_rejection(nav_status: int, page_html: str) -> bool:
+        """Return True when the WAF rejected our Firefox connection.
+
+        Distinguishes a WAF-level block from Chromium's own internal rate-limiter:
+        - We only call this when the active engine is Firefox, so the stub cannot
+          be Chromium's internal limiter.
+        - Akamai / similar WAFs return HTTP 429 with a tiny ``local_rate_limited``
+          body when they refuse Firefox on TLS/Client-Hints grounds.
+        """
+        return (
+            nav_status == 429
+            and len(page_html) < 300
+            and "local_rate_limited" in page_html
+        )
+
+    def _navigate_with_chrome_fallback(
+        self, pw
+    ) -> tuple[Any, Any, int]:
+        """Launch browser, navigate to source_url, and auto-retry with Chrome
+        if Firefox is rejected at the WAF level (Akamai local_rate_limited 429).
+
+        Returns:
+            (browser, page, nav_status) — always the active browser/page pair
+            after any retries.
+        """
+        configured_engine = self.cfg.get("browser_type", "firefox").lower()
+        browser, page = self._create_stealth_page(pw, engine=configured_engine)
+        nav_status = self._goto_with_retry(page, self.source_url)
+
+        if configured_engine == "firefox" and self._is_waf_firefox_rejection(
+            nav_status, page.content()
+        ):
+            logger.info(
+                "[%s] Firefox rejected by WAF (local_rate_limited 429). "
+                "Auto-retrying with Chrome...",
+                self.brand,
+            )
+            browser.close()
+            browser, page = self._create_stealth_page(pw, engine="chrome")
+            nav_status = self._goto_with_retry(page, self.source_url)
+
+        return browser, page, nav_status
 
     def _goto_with_retry(self, page, url: str) -> int:
         """
@@ -550,9 +582,8 @@ class HybridPromoExtractor:
         seen_hashes: set[str] = set()
 
         with sync_playwright() as pw:
-            browser, page = self._create_stealth_page(pw)
+            browser, page, nav_status = self._navigate_with_chrome_fallback(pw)
             try:
-                nav_status = self._goto_with_retry(page, self.source_url)
                 bypass_res = self.anti_bot_service.resolve_page_content(self.source_url, page, status_code=nav_status)
                 logger.info(
                     "[%s] Page resolved via %s. Title: '%s', Content Length: %d",
@@ -878,9 +909,8 @@ class HybridPromoExtractor:
         urls: list[str] = []
 
         with sync_playwright() as pw:
-            browser, page = self._create_stealth_page(pw)
+            browser, page, nav_status = self._navigate_with_chrome_fallback(pw)
             try:
-                nav_status = self._goto_with_retry(page, self.source_url)
                 bypass_res = self.anti_bot_service.resolve_page_content(self.source_url, page, status_code=nav_status)
                 logger.info(
                     "[%s] Image URL collection resolved via %s. Title: '%s'",
@@ -1280,12 +1310,13 @@ class HybridPromoExtractor:
                 elif not source_item.get("category") or source_item.get("category") not in allowed:
                     source_item["category"] = self.cfg.get("category") or "Others"
 
-                # Post-processing override: if item category is "Others" but the brand config
-                # declares an explicit category, override it. A brand like Bobbi Brown that
-                # declares category="Beauty" should never have offers fall into "Others".
+                # Hard override: if the brand config declares an explicit category,
+                # it always takes precedence over whatever the LLM assigned.
+                # e.g. config category="Beauty" beats LLM-assigned "Menswear".
                 config_category = self.cfg.get("category")
-                if source_item.get("category") == "Others" and config_category and config_category in allowed:
-                    logger.info("  Category override: LLM chose 'Others' but config declares '%s' → using '%s'", config_category, config_category)
+                if config_category and config_category in allowed:
+                    if source_item.get("category") != config_category:
+                        logger.info("  Category hard-override: LLM chose '%s' but config declares '%s' → using '%s'", source_item.get("category"), config_category, config_category)
                     source_item["category"] = config_category
 
                 logger.info("  KEPT & CANONICALIZED: '%s' (Category: %s) [Merged %d raw offer(s): %s]", source_item["title"], source_item["category"], len(valid_ids), raw_titles)

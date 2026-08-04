@@ -23,7 +23,9 @@
       "Converse": {
         "categories": ["Footwear"]
       },
-      "Skechers": {},
+      "Skechers": {
+        "categories": ["Womens", "Footwear"]
+      },
       "Shoe hq": {
         "categories": ["Womens", "Footwear"]
       },
@@ -154,14 +156,26 @@
   },
   "Entertainment": {
     "team_id": "entertainment_team",
-    "categories": ["Entertainment", "Others"],
+    "categories": ["Entertainment", "Home", "Others"],
     "allowed_brands":{
-      "JB Hi-Fi":{},
-      "The Good Guys":{},
-      "David Jones":{},
-      "Harvey Norman":{},
-      "Strandbags":{},
-      "Harris Scarfe":{}
+      "JB Hi-Fi":{
+        "categories": ["Entertainment", "Home", "Others"]
+      },
+      "The Good Guys":{
+        "categories": ["Entertainment", "Others"]
+      },
+      "David Jones":{
+        "categories": ["Entertainment", "Others"]
+      },
+      "Harvey Norman":{
+        "categories": ["Entertainment", "Others"]
+      },
+      "Strandbags":{
+        "categories": ["Entertainment", "Others"]
+      },
+      "Harris Scarfe":{
+        "categories": ["Entertainment", "Others"]
+      }
     }
   },
   "Beauty": {

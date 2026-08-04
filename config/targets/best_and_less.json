@@ -11,13 +11,11 @@
   "text_selectors": [
     "p.mb-0",
     ".shop-now-outline",
-    "app-price-text-image-tile-list .text-section"
+    "app-price-text-image-tile-list a"
   ],
   "screenshot_selectors": [
-    ".image-container-single img",
-    ".image-container-single",
-    "img.image-contain",
-    "#Sale-Week-46-Component .image-container img"
+    "app-price-text-image-tile-list .image-container img",
+    ".image-container-single .image-contain"
   ],
   "min_image_width": 200,
   "min_image_height": 150,

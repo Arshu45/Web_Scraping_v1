@@ -3,7 +3,7 @@
   "source_url": [
     {
       "url": "https://americaneagle.com.au/",
-      "category_hint": "Casual denim and apparel brand. Jeans, tops, apparel -> Menswear or Womens depending on context."
+      "category_hint": "Casual denim & apparel retailer. Women's products → Womens. Men's products → Menswear. If the promotion does not explicitly indicate gender, default to Menswear."
     }
   ],
   "spider": "image_promo",
