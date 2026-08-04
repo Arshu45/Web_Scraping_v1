@@ -37,5 +37,5 @@
   "min_aspect_ratio": 1.2,
   "request_delay_seconds": 4,
   "scroll_depth": 2,
-  "enabled": false
+  "enabled": true
 }

@@ -9,6 +9,7 @@ Usage:
 
 import sys
 import os
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -135,6 +136,45 @@ def generate_report(hybrid_results: list[dict]):
 
 
 # ─────────────────────────────────────────────
+# Task: Retry report (separate block per attempt)
+# ─────────────────────────────────────────────
+@task(name="Generate Retry Report")
+def generate_retry_report(attempt: int, max_attempts: int, retry_results: list[dict]):
+    logger = get_run_logger()
+
+    recovered    = [r for r in retry_results if "error" not in r and r.get("offers_extracted", 0) > 0]
+    still_failed = [r for r in retry_results if "error" in r or r.get("offers_extracted", 0) == 0]
+
+    report_lines = [
+        "",
+        "╔══════════════════════════════════════════════╗",
+        f"║     🔁 RETRY ATTEMPT {attempt}/{max_attempts} — REPORT             ║",
+        "╠══════════════════════════════════════════════╣",
+        f"║  Brands retried : {len(retry_results):<28}║",
+        f"║  ✅ Recovered   : {len(recovered):<28}║",
+        f"║  ❌ Still failing: {len(still_failed):<27}║",
+        "╠══════════════════════════════════════════════╣",
+    ]
+
+    for r in retry_results:
+        brand = r.get("brand", "Unknown")
+        if "error" in r:
+            err = r["error"][:28]
+            report_lines.append(f"║  ❌ {brand:<14} | {err:<30} ║")
+        elif r.get("offers_extracted", 0) == 0:
+            cost = r.get("estimated_cost_usd", 0.0)
+            reason = f"tried (cost=${cost:.4f})" if cost > 0 else "no promos found"
+            report_lines.append(f"║  ⚠️  {brand:<14} | {reason:<29} ║")
+        else:
+            offers = r.get("offers_extracted", 0)
+            stored = r.get("offers_stored", 0)
+            report_lines.append(f"║  ✅ {brand:<14} | offers={offers:<3} stored={stored:<3} RECOVERED   ║")
+
+    report_lines.append("╚══════════════════════════════════════════════╝")
+    logger.info("\n".join(report_lines))
+
+
+# ─────────────────────────────────────────────
 # THE MASTER FLOW
 # ─────────────────────────────────────────────
 # Each brand target spins up its own Playwright Chromium instance. Submitting
@@ -177,6 +217,55 @@ def master_pipeline():
         hybrid_results.extend(f.result() for f in batch_futures)
 
     generate_report(hybrid_results)
+
+    # ── Post-pipeline retry pass ──────────────────────────────────────────────
+    # Retry brands that errored out OR extracted zero offers, up to 2 times.
+    # Progressive delay: 5 min before attempt 1, 10 min before attempt 2,
+    # giving temporarily blocked sites time to recover before we try again.
+    MAX_RETRY_ATTEMPTS   = 2
+    BASE_RETRY_DELAY_SEC = int(os.getenv("RETRY_DELAY_SECONDS", "300"))  # 5 min default
+
+    brand_to_target = {t["brand"]: t for t in targets}
+
+    # Seed the failed set from the main run (error only — zero-offer sites are not retried)
+    failed_brands = {
+        r["brand"] for r in hybrid_results
+        if "error" in r
+    }
+
+    for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
+        if not failed_brands:
+            logger.info("✅ No failed targets remaining — skipping retry pass %d.", attempt)
+            break
+
+        delay = BASE_RETRY_DELAY_SEC * attempt  # 5 min → 10 min
+        logger.info(
+            "⏳ Retry %d/%d — waiting %d s (~%.0f min) before retrying %d brand(s): %s",
+            attempt, MAX_RETRY_ATTEMPTS, delay, delay / 60,
+            len(failed_brands), ", ".join(sorted(failed_brands)),
+        )
+        time.sleep(delay)
+
+        retry_targets = [brand_to_target[b] for b in sorted(failed_brands) if b in brand_to_target]
+        retry_results = []
+        for t in retry_targets:
+            logger.info("🔁 [Retry %d/%d] Processing: %s", attempt, MAX_RETRY_ATTEMPTS, t["brand"])
+            result = scrape_brand_target(t)
+            retry_results.append(result)
+
+        generate_retry_report(attempt, MAX_RETRY_ATTEMPTS, retry_results)
+
+        # Narrow down the failed set for the next attempt (error only)
+        failed_brands = {
+            r["brand"] for r in retry_results
+            if "error" in r
+        }
+
+    if failed_brands:
+        logger.warning(
+            "⚠️  %d brand(s) still failing after %d retry attempts: %s",
+            len(failed_brands), MAX_RETRY_ATTEMPTS, ", ".join(sorted(failed_brands)),
+        )
 
 
 if __name__ == "__main__":

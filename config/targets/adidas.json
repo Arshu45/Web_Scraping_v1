@@ -24,5 +24,5 @@
   "scroll_depth": 3,
   "use_stealth_headers": false,
   "use_webdriver_patch": false,
-  "enabled": false
+  "enabled": true
 }
