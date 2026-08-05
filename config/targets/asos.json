@@ -11,10 +11,16 @@
     }
   ],
   "spider": "image_promo",
-  "extraction_strategy": "screenshot",
-  "text_selectors": [],
+  "extraction_strategy": "hybrid",
+  "text_selectors": [
+    ".flexible-banner",
+    ".flexible-banner__content",
+    "div[role='region'][aria-label='Flexible Banner']"
+  ],
   "screenshot_selectors": [
-    "a.hero__link img.hero__image"
+    "a.hero__link img.hero__image",
+    ".flexible-banner",
+    "div[role='region'][aria-label='Flexible Banner']"
   ],
   "min_image_width": 400,
   "min_image_height": 150,
