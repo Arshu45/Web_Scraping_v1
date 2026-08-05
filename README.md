@@ -259,17 +259,32 @@ python scripts/init_db.py
 
 Creates all tables (`competitors`, `promotions`, `promotion_team_assignments`) if they don't exist.
 
-### 4. Run the Scraper
+### 4. Run the Scraper Pipeline
 
-Run all enabled targets via Prefect:
+You can run the scraper in multiple ways:
 
+#### A. Direct Manual Execution (Single-pass)
 ```bash
 python flows/master_pipeline.py
 ```
 
-> The pipeline generates a summary report with: per-brand results table, aggregate stats, a **Failed Sites** table (brands that errored), and a **Zero Offers** table (brands that completed but extracted nothing).
+> The pipeline runs all configured target brands in parallel, handles automatic retries for errored and zero-offer brands after the run, and generates a summary report.
 
-Run a single target for testing:
+#### B. Daily 6 AM Cron Scheduled Execution (Prefect Serve)
+Run the master pipeline as a background daemon on a daily cron schedule (`0 6 * * *` = 6:00 AM daily):
+```bash
+python flows/master_pipeline.py --serve
+```
+*(Optional)* Override the schedule (e.g. 6:30 AM daily):
+```bash
+python flows/master_pipeline.py --serve --cron "30 6 * * *"
+```
+
+#### C. Interactive Streamlit UI Runner
+Launch the dashboard and navigate to the **Scraper Runner** page to run full pipelines or select individual brands interactively with real-time log streaming.
+
+#### D. Run a Single Target Config
+Run a single target for quick testing/debugging:
 
 ```bash
 python scripts/run_hybrid_promo_scraper.py --target config/targets/bobbi_brown.json
@@ -290,6 +305,22 @@ streamlit run dashboard/app.py
 ```
 
 Open [http://localhost:8501](http://localhost:8501).
+
+---
+
+## Logging & Retries
+
+### Timestamped File Logging
+Every scraper execution automatically creates a timestamped log file in the `/logs/` directory:
+- `logs/scraper_<YYYYMMDD_HHMMSS>_pipeline.log` (Prefect master pipeline runs)
+- `logs/scraper_<YYYYMMDD_HHMMSS>_cli.log` (Direct CLI single-target runs)
+- `logs/scraper_<YYYYMMDD_HHMMSS>_ui.log` (Streamlit Runner runs)
+
+### Post-Pipeline Retry Pass
+After the main pipeline execution completes, the pipeline automatically detects brands that encountered errors or returned **0 offers** (e.g. due to temporary rate-limiting or anti-bot challenges):
+1. **Attempt 1**: Waits 5 minutes (`RETRY_DELAY_SECONDS=300`), then retries failed/zero-offer targets sequentially.
+2. **Attempt 2**: Waits 10 minutes (`RETRY_DELAY_SECONDS=600`) for any remaining failed targets.
+3. Generates a separate **Retry Report** block summarizing recovered vs still-failing brands.
 
 ---
 
