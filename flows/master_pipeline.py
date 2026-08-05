@@ -278,4 +278,25 @@ def master_pipeline():
 
 
 if __name__ == "__main__":
-    master_pipeline()
+    import argparse
+    parser = argparse.ArgumentParser(description="Run or schedule the Master Promo Scraper Pipeline.")
+    parser.add_argument(
+        "--serve",
+        action="store_true",
+        help="Run Prefect serve loop to execute the pipeline on a daily schedule (every day at 6:00 AM)."
+    )
+    parser.add_argument(
+        "--cron",
+        default="0 6 * * *",
+        help="Cron expression for --serve mode (default: '0 6 * * *' for 6:00 AM daily)."
+    )
+    args = parser.parse_args()
+
+    if args.serve:
+        print(f"🚀 Serving Master Pipeline on cron schedule '{args.cron}' (Daily at 6:00 AM)...")
+        master_pipeline.serve(
+            name="daily-master-scraper",
+            cron=args.cron,
+        )
+    else:
+        master_pipeline()
