@@ -53,10 +53,12 @@ st.markdown("""
     white-space: pre-wrap;
     word-break: break-word;
 }
-.log-info    { color: #7EC8E3; }
+.log-info    { color: #8AC8DC; }
 .log-warning { color: #F0C040; }
 .log-error   { color: #F07070; }
 .log-success { color: #5DE8A0; }
+.log-head    { color: #FFFFFF; font-weight: 700; letter-spacing: 0.03em; }
+.log-sep     { color: #2E3050; user-select: none; }
 
 /* ── Status badges ────────────────────────────────────────────── */
 .run-badge {
@@ -159,7 +161,9 @@ class QueueHandler(logging.Handler):
         self.q = q
 
     def emit(self, record):
-        self.q.put(self.format(record))
+        # Prefix with level so the UI can colour-code without parsing
+        level_tag = record.levelname  # INFO / WARNING / ERROR / CRITICAL
+        self.q.put((level_tag, self.format(record)))
 
 
 # ── Core runner (runs in a background thread) ────────────────────────────────
@@ -173,62 +177,136 @@ def _run_scraper(
 ):
     """Runs scraping sequentially, posts log lines and results into shared state."""
     from scripts.run_hybrid_promo_scraper import scrape_single_target
+    from scripts.logging_setup import attach_file_logger, detach_file_logger
 
-    # Attach a queue handler to the root logger so all scraper logs flow through
+    SEP_THICK = "═" * 60
+    SEP_THIN  = "─" * 60
+
+    def _put(level: str, msg: str):
+        log_q.put((level, msg))
+
+    # Attach queue handler (UI live feed)
     handler = QueueHandler(log_q)
     handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s", "%H:%M:%S"))
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
 
-    def run_batch(batch: list[dict]) -> list[dict]:
+    # Attach file handler (persistent log file)
+    file_handler = attach_file_logger(source="ui")
+
+    def run_batch(batch: list[dict], pass_label: str = "Main") -> list[dict]:
         results = []
-        for t in batch:
-            log_q.put(f"{'─'*55}")
-            log_q.put(f"▶ Starting: {t['brand']}")
+        total = len(batch)
+        for idx, t in enumerate(batch, 1):
+            brand = t["brand"]
+            _put("SEP",  SEP_THICK)
+            _put("HEAD", f"[{pass_label}] {idx}/{total}  ▶  {brand}")
+            _put("SEP",  SEP_THIN)
             try:
                 r = scrape_single_target(t)
             except Exception as exc:
-                r = {"brand": t["brand"], "error": str(exc)}
+                r = {"brand": brand, "error": str(exc)}
+
+            # ── Post-brand outcome banner ──
+            _put("SEP", SEP_THIN)
+            if "error" in r:
+                _put("ERROR",   f"✗  {brand}  →  ERROR: {r['error']}")
+            elif r.get("offers_extracted", 0) == 0:
+                _put("WARNING", f"⚠  {brand}  →  0 offers extracted  "
+                                f"(cost=${r.get('estimated_cost_usd', 0):.5f})")
+            else:
+                offers = r.get('offers_extracted', 0)
+                stored = r.get('offers_stored', 0)
+                cost   = r.get('estimated_cost_usd', 0.0)
+                calls  = r.get('gemini_api_calls', 0)
+                _put("SUCCESS", f"✓  {brand}  →  {offers} extracted  "
+                                f"{stored} stored  "
+                                f"{calls} API calls  "
+                                f"${cost:.5f}")
+            _put("SEP", "")
             results.append(r)
         return results
 
-    # ── Main run ──
-    log_q.put(f"🚀 Starting scrape for {len(targets)} brand(s)…")
-    main_results = run_batch(targets)
-    result_store["main"] = main_results
+    try:
+        # ── Main run ──
+        _put("HEAD", SEP_THICK)
+        _put("HEAD", f"🚀  SCRAPER START — {len(targets)} brand(s)")
+        _put("HEAD", SEP_THICK)
+        main_results = run_batch(targets, pass_label="Main Run")
+        result_store["main"] = main_results
 
-    # ── Retry pass ──
-    if retry_errored:
-        failed_brands = {r["brand"] for r in main_results if "error" in r}
-        brand_map = {t["brand"]: t for t in targets}
+        # ── Main run summary ──
+        ok    = sum(1 for r in main_results if "error" not in r and r.get("offers_extracted", 0) > 0)
+        zeros = sum(1 for r in main_results if "error" not in r and r.get("offers_extracted", 0) == 0)
+        errs  = sum(1 for r in main_results if "error" in r)
+        _put("HEAD", SEP_THICK)
+        _put("HEAD", f"MAIN RUN COMPLETE  ✓ {ok} ok   ⚠ {zeros} zero-offer   ✗ {errs} error")
+        _put("HEAD", SEP_THICK)
 
-        for attempt in range(1, max_retries + 1):
-            if not failed_brands:
-                log_q.put(f"✅ No failed brands — skipping retry {attempt}.")
-                break
+        # ── Retry pass ──
+        if retry_errored:
+            failed_brands = {
+                r["brand"] for r in main_results
+                if "error" in r or r.get("offers_extracted", 0) == 0
+            }
+            brand_map = {t["brand"]: t for t in targets}
 
-            log_q.put(
-                f"\n⏳ Retry {attempt}/{max_retries} — waiting {retry_delay_sec}s "
-                f"(~{retry_delay_sec//60} min) for: {', '.join(sorted(failed_brands))}"
-            )
-            time.sleep(retry_delay_sec)
+            for attempt in range(1, max_retries + 1):
+                if not failed_brands:
+                    _put("SUCCESS", f"✅  No brands to retry — skipping attempt {attempt}/{max_retries}.")
+                    break
 
-            retry_targets = [brand_map[b] for b in sorted(failed_brands) if b in brand_map]
-            log_q.put(f"🔁 Retrying {len(retry_targets)} brand(s) — attempt {attempt}/{max_retries}")
-            retry_results = run_batch(retry_targets)
+                _put("HEAD", SEP_THICK)
+                _put("HEAD",
+                    f"⏳  RETRY {attempt}/{max_retries} — "
+                    f"{len(failed_brands)} brand(s) queued: "
+                    f"{', '.join(sorted(failed_brands))}"
+                )
+                _put("INFO",
+                    f"    Waiting {retry_delay_sec}s (~{retry_delay_sec // 60} min) "
+                    f"before re-attempting…"
+                )
+                _put("HEAD", SEP_THICK)
+                time.sleep(retry_delay_sec)
 
-            result_store.setdefault("retries", []).append({
-                "attempt": attempt,
-                "results": retry_results,
-            })
+                retry_targets = [brand_map[b] for b in sorted(failed_brands) if b in brand_map]
+                retry_results = run_batch(retry_targets, pass_label=f"Retry {attempt}/{max_retries}")
 
-            failed_brands = {r["brand"] for r in retry_results if "error" in r}
+                result_store.setdefault("retries", []).append({
+                    "attempt": attempt,
+                    "results": retry_results,
+                })
 
-        if failed_brands:
-            log_q.put(f"\n⚠️  Still failing after {max_retries} retry attempt(s): {', '.join(sorted(failed_brands))}")
+                # Carry forward brands that still errored OR returned 0 offers
+                failed_brands = {
+                    r["brand"] for r in retry_results
+                    if "error" in r or r.get("offers_extracted", 0) == 0
+                }
 
-    root_logger.removeHandler(handler)
-    log_q.put("__DONE__")
+                recovered = sum(
+                    1 for r in retry_results
+                    if "error" not in r and r.get("offers_extracted", 0) > 0
+                )
+                _put("HEAD", SEP_THICK)
+                _put("HEAD" if not failed_brands else "WARNING",
+                    f"RETRY {attempt} COMPLETE  "
+                    f"✓ {recovered} recovered   "
+                    f"✗ {len(failed_brands)} still failing"
+                )
+                _put("HEAD", SEP_THICK)
+
+            if failed_brands:
+                _put("ERROR",
+                    f"⚠  {len(failed_brands)} brand(s) still failing after "
+                    f"{max_retries} retry attempt(s): {', '.join(sorted(failed_brands))}"
+                )
+
+    finally:
+        log_path = detach_file_logger(file_handler)
+        result_store["log_path"] = log_path
+        _put("SUCCESS", f"📄 Full log saved → {log_path}")
+        root_logger.removeHandler(handler)
+        log_q.put("__DONE__")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -328,13 +406,14 @@ if st.session_state.runner_state == "running" and st.session_state.log_q:
     # Drain everything currently in the queue
     while True:
         try:
-            line = log_q.get_nowait()
+            item = log_q.get_nowait()
         except queue.Empty:
             break
-        if line == "__DONE__":
+        if item == "__DONE__":
             done = True
             break
-        new_lines.append(line)
+        # Items are (level_tag, message) tuples
+        new_lines.append(item)
 
     st.session_state.log_lines.extend(new_lines)
 
@@ -354,18 +433,27 @@ if st.session_state.runner_state == "running" and st.session_state.log_q:
 st.markdown('<div class="section-label">Live Log</div>', unsafe_allow_html=True)
 
 if st.session_state.log_lines:
+    import html as _html
+
+    # level_tag → CSS class mapping
+    LEVEL_CSS = {
+        "ERROR":    "log-error",
+        "CRITICAL": "log-error",
+        "WARNING":  "log-warning",
+        "SUCCESS":  "log-success",
+        "HEAD":     "log-head",
+        "SEP":      "log-sep",
+        "INFO":     "log-info",
+    }
+
     lines_html = ""
-    for line in st.session_state.log_lines:
-        if "[ERROR]" in line or "[CRITICAL]" in line:
-            css = "log-error"
-        elif "[WARNING]" in line:
-            css = "log-warning"
-        elif "✅" in line or "RECOVERED" in line or "✓" in line:
-            css = "log-success"
+    for item in st.session_state.log_lines:
+        if isinstance(item, tuple):
+            level_tag, msg = item
         else:
-            css = "log-info"
-        import html as _html
-        lines_html += f'<span class="{css}">{_html.escape(line)}</span>\n'
+            level_tag, msg = "INFO", str(item)
+        css = LEVEL_CSS.get(level_tag, "log-info")
+        lines_html += f'<span class="{css}">{_html.escape(msg)}</span>\n'
 
     st.markdown(f'<div class="log-console">{lines_html}</div>', unsafe_allow_html=True)
 else:
@@ -413,6 +501,29 @@ if result_store.get("main"):
             retry_pass["results"],
             f"🔁 Retry Attempt {attempt}/{max_retries}",
         )
+
+    # ── Log file ──
+    log_path = result_store.get("log_path")
+    if log_path and os.path.exists(log_path):
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown('<div class="section-label">📄 Run Log File</div>', unsafe_allow_html=True)
+        log_col1, log_col2 = st.columns([4, 1], vertical_alignment="center")
+        with log_col1:
+            st.markdown(
+                f'<div style="font-size:0.84rem; color:#505060; font-family: monospace; '
+                f'background:#F4F4F8; padding:8px 14px; border-radius:8px; '
+                f'border:1px solid #E5E5EE;">{log_path}</div>',
+                unsafe_allow_html=True,
+            )
+        with log_col2:
+            with open(log_path, "rb") as lf:
+                st.download_button(
+                    label="⬇ Download Log",
+                    data=lf.read(),
+                    file_name=os.path.basename(log_path),
+                    mime="text/plain",
+                    use_container_width=True,
+                )
 
 # ── Idle state hint ──────────────────────────────────────────────────────────
 if st.session_state.runner_state == "idle":

@@ -30,3 +30,6 @@ data/*.xml
 
 # GLiNER model cache
 .gliner_cache/
+
+# Scraper run logs (timestamped per run — do not commit)
+logs/*.log

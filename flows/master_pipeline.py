@@ -14,6 +14,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from prefect import flow, task, get_run_logger
+from scripts.logging_setup import attach_file_logger, detach_file_logger
 
 # ─────────────────────────────────────────────
 # Task: Scrape a SINGLE brand target (runs concurrently via .map)
@@ -200,6 +201,10 @@ def master_pipeline():
     MAX_CONCURRENT_BROWSERS = int(os.getenv("MAX_CONCURRENT_BROWSERS", "5"))
 
     logger = get_run_logger()
+
+    # ── Attach timestamped file logger for this entire run ──
+    file_handler = attach_file_logger(source="pipeline")
+
     logger.info("🚀 Master pipeline starting...")
     logger.info("MAX_CONCURRENT_BROWSERS = %d", MAX_CONCURRENT_BROWSERS)
 
@@ -211,61 +216,65 @@ def master_pipeline():
     )
 
     hybrid_results = []
-    for i in range(0, len(targets), MAX_CONCURRENT_BROWSERS):
-        batch = targets[i:i + MAX_CONCURRENT_BROWSERS]
-        batch_futures = scrape_brand_target.map(batch)
-        hybrid_results.extend(f.result() for f in batch_futures)
+    try:
+        for i in range(0, len(targets), MAX_CONCURRENT_BROWSERS):
+            batch = targets[i:i + MAX_CONCURRENT_BROWSERS]
+            batch_futures = scrape_brand_target.map(batch)
+            hybrid_results.extend(f.result() for f in batch_futures)
 
-    generate_report(hybrid_results)
+        generate_report(hybrid_results)
 
-    # ── Post-pipeline retry pass ──────────────────────────────────────────────
-    # Retry brands that errored out OR extracted zero offers, up to 2 times.
-    # Progressive delay: 5 min before attempt 1, 10 min before attempt 2,
-    # giving temporarily blocked sites time to recover before we try again.
-    MAX_RETRY_ATTEMPTS   = 2
-    BASE_RETRY_DELAY_SEC = int(os.getenv("RETRY_DELAY_SECONDS", "300"))  # 5 min default
+        # ── Post-pipeline retry pass ──────────────────────────────────────────────
+        # Retry brands that errored out OR extracted zero offers, up to 2 times.
+        # Progressive delay: 5 min before attempt 1, 10 min before attempt 2,
+        # giving temporarily blocked sites time to recover before we try again.
+        MAX_RETRY_ATTEMPTS   = 2
+        BASE_RETRY_DELAY_SEC = int(os.getenv("RETRY_DELAY_SECONDS", "300"))  # 5 min default
 
-    brand_to_target = {t["brand"]: t for t in targets}
+        brand_to_target = {t["brand"]: t for t in targets}
 
-    # Seed the failed set from the main run (error only — zero-offer sites are not retried)
-    failed_brands = {
-        r["brand"] for r in hybrid_results
-        if "error" in r
-    }
-
-    for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
-        if not failed_brands:
-            logger.info("✅ No failed targets remaining — skipping retry pass %d.", attempt)
-            break
-
-        delay = BASE_RETRY_DELAY_SEC * attempt  # 5 min → 10 min
-        logger.info(
-            "⏳ Retry %d/%d — waiting %d s (~%.0f min) before retrying %d brand(s): %s",
-            attempt, MAX_RETRY_ATTEMPTS, delay, delay / 60,
-            len(failed_brands), ", ".join(sorted(failed_brands)),
-        )
-        time.sleep(delay)
-
-        retry_targets = [brand_to_target[b] for b in sorted(failed_brands) if b in brand_to_target]
-        retry_results = []
-        for t in retry_targets:
-            logger.info("🔁 [Retry %d/%d] Processing: %s", attempt, MAX_RETRY_ATTEMPTS, t["brand"])
-            result = scrape_brand_target(t)
-            retry_results.append(result)
-
-        generate_retry_report(attempt, MAX_RETRY_ATTEMPTS, retry_results)
-
-        # Narrow down the failed set for the next attempt (error only)
+        # Seed the failed set from the main run — retry both errored AND zero-offer brands.
         failed_brands = {
-            r["brand"] for r in retry_results
-            if "error" in r
+            r["brand"] for r in hybrid_results
+            if "error" in r or r.get("offers_extracted", 0) == 0
         }
 
-    if failed_brands:
-        logger.warning(
-            "⚠️  %d brand(s) still failing after %d retry attempts: %s",
-            len(failed_brands), MAX_RETRY_ATTEMPTS, ", ".join(sorted(failed_brands)),
-        )
+        for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
+            if not failed_brands:
+                logger.info("✅ No failed targets remaining — skipping retry pass %d.", attempt)
+                break
+
+            delay = BASE_RETRY_DELAY_SEC * attempt  # 5 min → 10 min
+            logger.info(
+                "⏳ Retry %d/%d — waiting %d s (~%.0f min) before retrying %d brand(s): %s",
+                attempt, MAX_RETRY_ATTEMPTS, delay, delay / 60,
+                len(failed_brands), ", ".join(sorted(failed_brands)),
+            )
+            time.sleep(delay)
+
+            retry_targets = [brand_to_target[b] for b in sorted(failed_brands) if b in brand_to_target]
+            retry_results = []
+            for t in retry_targets:
+                logger.info("🔁 [Retry %d/%d] Processing: %s", attempt, MAX_RETRY_ATTEMPTS, t["brand"])
+                result = scrape_brand_target(t)
+                retry_results.append(result)
+
+            generate_retry_report(attempt, MAX_RETRY_ATTEMPTS, retry_results)
+
+            # Narrow down the failed set for the next attempt (error or zero offers)
+            failed_brands = {
+                r["brand"] for r in retry_results
+                if "error" in r or r.get("offers_extracted", 0) == 0
+            }
+
+        if failed_brands:
+            logger.warning(
+                "⚠️  %d brand(s) still failing after %d retry attempts: %s",
+                len(failed_brands), MAX_RETRY_ATTEMPTS, ", ".join(sorted(failed_brands)),
+            )
+    finally:
+        log_path = detach_file_logger(file_handler)
+        logger.info("📄 Full run log saved → %s", log_path)
 
 
 if __name__ == "__main__":
