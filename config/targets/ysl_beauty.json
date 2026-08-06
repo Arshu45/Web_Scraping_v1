@@ -2,14 +2,15 @@
   "brand": "YSL",
   "source_url": [
     {
-      "url": "https://www.yslbeauty.com.au/",
-      "category_hint": "Luxury beauty, cosmetics, and fragrance -> Beauty. Always Beauty."
+      "url": "https://www.yslbeauty.com.au/offers.html",
+      "category_hint": "Luxury beauty, cosmetics, gifts and offers -> Beauty. Always Beauty."
     }
   ],
   "spider": "image_promo",
   "extraction_strategy": "hybrid",
   "text_selectors": [
-    ".c-navigation__content-title"
+    ".c-navigation__content-title",
+    ".c-content-tile__description"
   ],
   "screenshot_selectors": [
     ".c-navigation__content-image img"
@@ -27,5 +28,5 @@
   ],
   "request_delay_seconds": 4,
   "scroll_depth": 3,
-  "enabled": true
+  "enabled": false
 }

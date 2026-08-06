@@ -279,24 +279,32 @@ def master_pipeline():
 
 if __name__ == "__main__":
     import argparse
+    from prefect.client.schemas.schedules import CronSchedule
+
     parser = argparse.ArgumentParser(description="Run or schedule the Master Promo Scraper Pipeline.")
     parser.add_argument(
         "--serve",
         action="store_true",
-        help="Run Prefect serve loop to execute the pipeline on a daily schedule (every day at 6:00 AM)."
+        help="Run Prefect serve loop to execute the pipeline on a daily schedule."
     )
     parser.add_argument(
         "--cron",
         default="0 6 * * *",
-        help="Cron expression for --serve mode (default: '0 6 * * *' for 6:00 AM daily)."
+        help="Cron expression for --serve mode (default: '0 6 * * *')."
+    )
+    parser.add_argument(
+        "--timezone",
+        default="Asia/Kolkata",
+        help="Timezone for cron schedule (default: 'Asia/Kolkata' for IST)."
     )
     args = parser.parse_args()
 
     if args.serve:
-        print(f"🚀 Serving Master Pipeline on cron schedule '{args.cron}' (Daily at 6:00 AM)...")
+        cron_schedule = CronSchedule(cron=args.cron, timezone=args.timezone)
+        print(f"🚀 Serving Master Pipeline on schedule '{cron_schedule.cron}' [{cron_schedule.timezone}] (Daily at 6:00 AM IST)...")
         master_pipeline.serve(
             name="daily-master-scraper",
-            cron=args.cron,
+            schedule=cron_schedule,
         )
     else:
         master_pipeline()
